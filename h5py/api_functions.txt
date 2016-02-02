@@ -532,9 +532,188 @@ hdf5:
   hsize_t H5Aget_storage_size(hid_t attr_id)
 
   MPI herr_t H5Pset_fapl_mpio(hid_t fapl_id, MPI_Comm comm, MPI_Info info)
-  MPI herr_t H5Pset_fapl_mpiposix(hid_t fapl_id, MPI_Comm comm, hbool_t hints)
   MPI 1.8.9 herr_t H5Fset_mpi_atomicity(hid_t file_id, hbool_t flag)
   MPI 1.8.9 herr_t H5Fget_mpi_atomicity(hid_t file_id, hbool_t *flag)
+
+#=========================================================================
+# Exascale FastForward
+#=========================================================================
+
+# === Init and finalize functions ========================================
+
+   EFF herr_t EFF_init(MPI_Comm comm, MPI_Info info)
+   EFF herr_t EFF_finalize()
+
+
+# === H5ES - Event Stack API =============================================
+
+   EFF hid_t H5EScreate()
+   EFF herr_t H5ESget_count(hid_t es_id, size_t *count)
+   EFF herr_t H5EStest(hid_t es_id, size_t event_idx, H5ES_status_t *status)
+   EFF herr_t H5EStest_all(hid_t es_id,  H5ES_status_t *status)
+   EFF herr_t H5ESwait(hid_t es_id, size_t event_idx, H5ES_status_t *status)
+   EFF herr_t H5ESwait_all(hid_t es_id,  H5ES_status_t *status)
+   EFF herr_t H5ESclear(hid_t es_id)
+   EFF herr_t H5ESclose(hid_t es_id)
+
+# === H5F API New Additions ==============================================
+
+   EFF hid_t H5Fclose_ff(hid_t file_id, hbool_t persist_flag, hid_t es_id)
+   EFF hid_t H5Fcreate_ff(char *name, unsigned flags, hid_t fcpl_id, hid_t fapl_id, hid_t es_id)
+   EFF hid_t H5Fopen_ff(char *name, unsigned flags, hid_t fapl_id, hid_t *rcntxt_id, hid_t es_id)
+
+# === H5G API New Additions ==============================================
+
+   EFF hid_t H5Gcreate_ff(hid_t loc_id, char *name, hid_t lcpl_id, hid_t gcpl_id, hid_t gapl_id, hid_t trans_id, hid_t es_id)
+   EFF hid_t H5Gopen_ff(hid_t loc_id, char * name, hid_t gapl_id, hid_t rcntxt_id, hid_t es_id)
+   EFF hid_t H5Gclose_ff(hid_t group_id, hid_t es_id)
+   EFF herr_t H5Gevict_ff(hid_t grp_id, uint64_t c_version, hid_t dxpl_id, hid_t estack_id)
+   EFF herr_t H5Gprefetch_ff(hid_t grp_id, hid_t rcxt_id, hrpl_t *replica_id, hid_t dxpl_id, hid_t estack_id)
+
+# === H5P API Additions ==================================================
+
+   EFF herr_t H5Pset_fapl_iod(hid_t fapl_id, MPI_Comm comm, MPI_Info info)
+   EFF herr_t H5Pset_rcapl_version_request(hid_t rcapl_id, H5RC_request_t acquire_req)
+   EFF herr_t H5Pget_rcapl_version_request(hid_t rcapl_id, H5RC_request_t *acquire_req)
+   EFF herr_t H5Pset_trspl_num_peers(hid_t trspl_id, unsigned num_peers)
+   EFF herr_t H5Pget_trspl_num_peers(hid_t trspl_id, unsigned *num_peers)
+   EFF herr_t H5Pset_dxpl_checksum(hid_t dxpl_id, uint64_t value)
+   EFF herr_t H5Pset_dxpl_checksum_ptr(hid_t dxpl_id, uint64_t *value)
+   EFF herr_t H5Pset_dxpl_inject_corruption(hid_t dxpl_id, hbool_t flag)
+   EFF herr_t H5Pset_dxpl_replica(hid_t dxpl_id, hrpl_t replica_id)
+   EFF herr_t H5Pset_view_elmt_scope(hid_t vcpl_id, hid_t space_id)
+   EFF herr_t H5Pget_view_elmt_scope(hid_t vcpl_id, hid_t *space_id)
+
+# === H5TR - Transaction Operation API ===================================
+
+   EFF hid_t H5TRcreate(hid_t file_id, hid_t rc_id, uint64_t trans_num)
+   EFF herr_t H5TRget_trans_num(hid_t trans_id, uint64_t *trans_num)
+   EFF herr_t H5TRget_version(hid_t trans_id, uint64_t *c_version)
+   EFF herr_t H5TRstart(hid_t trans_id, hid_t trspl_id, hid_t estack_id)
+   EFF herr_t H5TRfinish(hid_t trans_id, hid_t trfpl_id, hid_t *rcntxt_id, hid_t estack_id)
+   EFF herr_t H5TRskip(hid_t file_id, uint64_t start_trans_num, uint64_t count, hid_t estack_id)
+   EFF herr_t H5TRset_dependency(hid_t trans_id, uint64_t trans_num, hid_t estack_id)
+   EFF herr_t H5TRabort(hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5TRclose(hid_t trans_id)
+
+# === H5RC - Read Context API ============================================
+
+   EFF hid_t H5RCcreate(hid_t file_id, uint64_t container_version)
+   EFF hid_t H5RCacquire(hid_t file_id, uint64_t *container_version, hid_t rcapl_id, hid_t estack_id)
+   EFF herr_t H5RCget_version(hid_t rcxt_id, uint64_t *c_version)
+   EFF herr_t H5RCrelease(hid_t rcxt_id , hid_t estack_id)
+   EFF herr_t H5RCpersist(hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5RCsnapshot(hid_t rcxt_id, char *snapshot_name, hid_t estack_id)
+   EFF herr_t H5RCclose(hid_t rcxt_id)
+
+# === H5T API Additions ==================================================
+
+   EFF herr_t H5Tcommit_ff(hid_t loc_id, char *name, hid_t type_id, hid_t lcpl_id, hid_t tcpl_id, hid_t tapl_id, hid_t trans_id, hid_t estack_id)
+   EFF hid_t H5Topen_ff(hid_t loc_id, char *name, hid_t tapl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Tclose_ff(hid_t type_id, hid_t estack_id)
+   EFF herr_t H5Tevict_ff(hid_t type_id, uint64_t c_version, hid_t dxpl_id, hid_t estack_id)
+   EFF herr_t H5Tprefetch_ff(hid_t type_id, hid_t rcxt_id, hrpl_t *replica_id, hid_t dxpl_id, hid_t estack_id)
+
+# === H5D API Additions ==================================================
+
+   EFF hid_t H5Dcreate_ff(hid_t loc_id, char *name, hid_t type_id, hid_t space_id, hid_t lcpl_id, hid_t dcpl_id, hid_t dapl_id, hid_t trans_id, hid_t estack_id)
+   EFF hid_t H5Dopen_ff(hid_t loc_id, char *name, hid_t dapl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Dwrite_ff(hid_t dset_id, hid_t mem_type_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, void *buf, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Dread_ff(hid_t dset_id, hid_t mem_type_id, hid_t mem_space_id, hid_t file_space_id, hid_t dxpl_id, void *buf, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Dset_extent_ff(hid_t dset_id, hsize_t* size, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Dclose_ff(hid_t dset_id, hid_t estack_id)
+   EFF herr_t H5Devict_ff(hid_t dset_id, uint64_t c_version, hid_t dxpl_id, hid_t estack_id)
+   EFF herr_t H5Dprefetch_ff(hid_t dset_id, hid_t rcxt_id, hrpl_t *replica_id, hid_t dxpl_id, hid_t estack_id)
+
+# === H5A API Additions ==================================================
+
+   EFF hid_t H5Acreate_ff(hid_t loc_id, char *attr_name, hid_t type_id, hid_t space_id, hid_t acpl_id, hid_t aapl_id, hid_t trans_id, hid_t estack_id)
+   EFF hid_t H5Acreate_by_name_ff(hid_t loc_id, char *obj_name, char *attr_name, hid_t type_id, hid_t space_id, hid_t acpl_id, hid_t aapl_id, hid_t lapl_id, hid_t trans_id, hid_t estack_id)
+   EFF hid_t H5Aopen_ff(hid_t loc_id, char *attr_name, hid_t aapl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF hid_t H5Aopen_by_name_ff(hid_t loc_id, char *obj_name, char *attr_name, hid_t aapl_id, hid_t lapl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Awrite_ff(hid_t attr_id, hid_t dtype_id, void *buf, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Aread_ff(hid_t attr_id, hid_t dtype_id, void *buf, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Arename_ff(hid_t loc_id, char *old_name, char *new_name, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Arename_by_name_ff(hid_t loc_id, char *obj_name, char *old_attr_name, char *new_attr_name, hid_t lapl_id, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Adelete_ff(hid_t loc_id, char *name, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Adelete_by_name_ff(hid_t loc_id, char *obj_name, char *attr_name, hid_t lapl_id, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Aexists_by_name_ff(hid_t loc_id, char *obj_name, char *attr_name, hid_t lapl_id, hbool_t *ret, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Aexists_ff(hid_t obj_id, char *attr_name, hbool_t *ret, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Aclose_ff(hid_t attr_id, hid_t estack_id)
+   EFF herr_t H5Aprefetch_ff(hid_t attr_id, hid_t rcxt_id, hrpl_t *replica_id, hid_t dxpl_id, hid_t estack_id)
+   EFF herr_t H5Aevict_ff(hid_t attr_id, uint64_t c_version, hid_t dxpl_id, hid_t estack_id)
+
+# === H5O API Additions ==================================================
+
+   EFF hid_t H5Oopen_ff(hid_t loc_id, char *name, hid_t lapl_id, hid_t rcxt_id)
+   EFF herr_t H5Oget_token(hid_t obj_id, void *token, size_t *token_size)
+   EFF hid_t H5Oopen_by_token(void *token, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Olink_ff(hid_t obj_id, hid_t new_loc_id, char *new_name, hid_t lcpl_id, hid_t lapl_id, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Oexists_by_name_ff(hid_t loc_id, char *name, hbool_t *ret, hid_t lapl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Oset_comment_ff(hid_t obj_id, char *comment, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Oset_comment_by_name_ff(hid_t loc_id, char *name, char *comment, hid_t lapl_id, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Oget_comment_ff(hid_t loc_id, char *comment, size_t bufsize, ssize_t *ret, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Oget_comment_by_name_ff(hid_t loc_id, char *name, char *comment, size_t bufsize, ssize_t *ret, hid_t lapl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Oget_info_ff(hid_t object_id, H5O_ff_info_t *object_info, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Oget_info_by_name_ff(hid_t loc_id, char *object_name, H5O_ff_info_t *object_info, hid_t lapl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Oclose_ff(hid_t object_id, hid_t estack_id)
+
+# === H5L API Additions ==================================================
+
+   EFF herr_t H5Lmove_ff(hid_t src_loc_id, char *src_name, hid_t dst_loc_id, char *dst_name, hid_t lcpl_id, hid_t lapl_id, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Lcopy_ff(hid_t src_loc_id, char *src_name, hid_t dst_loc_id, char *dst_name, hid_t lcpl_id, hid_t lapl_id, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Lcreate_soft_ff(char *link_target, hid_t link_loc_id, char *link_name, hid_t lcpl_id, hid_t lapl_id, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Lcreate_hard_ff(hid_t cur_loc_id, char *cur_name, hid_t new_loc_id, char *new_name, hid_t lcpl_id, hid_t lapl_id, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Ldelete_ff(hid_t loc_id, char *name, hid_t lapl_id, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Lexists_ff(hid_t loc_id, char *name, hid_t lapl_id, hbool_t *ret, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Lget_info_ff(hid_t link_loc_id, char *link_name, H5L_ff_info_t *link_buff, hid_t lapl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Lget_val_ff(hid_t link_loc_id, char *link_name, void *linkval_buff, size_t size, hid_t lapl_id, hid_t rcxt_id, hid_t estack_id)
+
+# === H5M - Map Object API ============================================================
+
+   EFF hid_t H5Mcreate_ff(hid_t loc_id, char *name, hid_t keytype, hid_t valtype, hid_t lcpl_id, hid_t mcpl_id, hid_t mapl_id, hid_t trans_id, hid_t estack_id)
+   EFF hid_t H5Mopen_ff(hid_t loc_id, char *name, hid_t mapl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Mset_ff(hid_t map_id, hid_t key_mem_type_id, void *key, hid_t val_mem_type_id, void *value, hid_t dxpl_id, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Mget_ff(hid_t map_id, hid_t key_mem_type_id, void *key, hid_t val_mem_type_id, void *value, hid_t dxpl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Mget_types_ff(hid_t map_id, hid_t *key_type_id, hid_t *val_type_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Mget_count_ff(hid_t map_id, hsize_t *count, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Mexists_ff(hid_t map_id, hid_t key_mem_type_id, void *key, hbool_t *exists, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Mdelete_ff(hid_t map_id, hid_t key_mem_type_id, void *key, hid_t trans_id, hid_t estack_id)
+   EFF herr_t H5Mclose_ff(hid_t map_id, hid_t estack_id)
+   EFF herr_t H5Mevict_ff(hid_t map_id, uint64_t c_version, hid_t dxpl_id, hid_t estack_id)
+   EFF herr_t H5Mprefetch_ff(hid_t map_id, hid_t rcxt_id, hrpl_t *replica_id, hid_t dxpl_id, hid_t estack_id)
+
+# === H5X API =============================================================
+
+   # EFF herr_t H5Xcreate_ff(hid_t file_id, unsigned plugin_id, hid_t scope_id, hid_t xcpl_id, hid_t trans_id, hid_t estack_id)
+   # EFF herr_t H5Xremove_ff(hid_t file_id, unsigned plugin_id, hid_t scope_id, hid_t trans_id, hid_t estack_id)
+   # EFF herr_t H5Xget_count_ff(hid_t scope_id, hsize_t *idx_count, hid_t rcxt_id, hid_t estack_id)
+
+# === H5Q API =============================================================
+
+   # Function below is commented out because variadic functions cannot be
+   # declared in this file. It is handled in the h5q.pyx file.
+   # EFF hid_t H5Qcreate(H5Q_type_t query_type, H5Q_match_op_t match_op, ...)
+   EFF herr_t H5Qclose(hid_t query_id)
+   EFF hid_t H5Qcombine(hid_t query1_id, H5Q_combine_op_t combine_op, hid_t query2_id)
+   EFF herr_t H5Qget_type(hid_t query_id, H5Q_type_t *query_type)
+   EFF herr_t H5Qget_match_op(hid_t query_id, H5Q_match_op_t *match_op)
+   EFF herr_t H5Qget_components(hid_t query_id, hid_t *sub_query1_id, hid_t *sub_query2_id)
+   EFF herr_t H5Qget_combine_op(hid_t query_id, H5Q_combine_op_t *op_type)
+
+# === H5V API =============================================================
+
+   EFF hid_t H5Vcreate_ff(hid_t loc_id, hid_t query_id, hid_t vcpl_id, hid_t rcxt_id, hid_t estack_id)
+   EFF herr_t H5Vget_query(hid_t view_id, hid_t *query_id)
+   EFF herr_t H5Vget_counts(hid_t view_id, hsize_t *attr_count, hsize_t *obj_count, hsize_t *elem_region_count)
+   EFF herr_t H5Vget_location_ff(hid_t view_id, hid_t *location_id, hid_t estack_id)
+   EFF herr_t H5Vget_attrs_ff(hid_t view_id, hsize_t start, hsize_t count, hid_t *attr_id, hid_t estack_id)
+   EFF herr_t H5Vget_objs_ff(hid_t view_id, hsize_t start, hsize_t count, hid_t *obj_id, hid_t estack_id)
+   EFF herr_t H5Vget_elem_regions_ff(hid_t view_id, hsize_t start, hsize_t count, hid_t *dataset_id, hid_t *dataspace_id, hid_t estack_id)
+   EFF herr_t H5Vclose(hid_t view_id)
+
+#=========================================================================
+#=========================================================================
 
 hdf5_hl:
 # === H5DS - Dimension Scales API =============================================

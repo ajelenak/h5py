@@ -17,6 +17,7 @@ from .base import HLObject, py3
 from . import filters
 from . import selections as sel
 from . import selections2 as sel2
+from .index import Index
 
 def readtime_dtype(basetype, names):
     """ Make a NumPy dtype appropriate for reading """
@@ -113,6 +114,101 @@ def make_new_dset(parent, shape=None, dtype=None, data=None,
     return dset_id
 
 
+#===========================================================================
+# For Exascale FastForward
+
+def make_new_dset_ff(parent, name, tr, shape=None, dtype=None, data=None,
+                     chunks=None, compression=None, shuffle=None,
+                     fletcher32=None, maxshape=None, compression_opts=None,
+                     fillvalue=None, scaleoffset=None, track_times=None,
+                     es=None):
+    """ Return a new low-level dataset identifier
+
+    For Exascale FastForward.
+    """
+
+    if name is None:
+        raise ValueError("Dataset must be names in the EFF stack")
+
+    # Convert data to a C-contiguous ndarray
+    if data is not None:
+        import base
+        data = numpy.asarray(data, order="C", dtype=base.guess_dtype(data))
+
+    # Validate shape
+    if shape is None:
+        if data is None:
+            raise TypeError("Either data or shape must be specified")
+        shape = data.shape
+    else:
+        shape = tuple(shape)
+        if data is not None and (numpy.product(shape) != numpy.product(data.shape)):
+            raise ValueError("Shape tuple is incompatible with data")
+
+    # Validate chunk shape
+    tmp_shape = maxshape if maxshape is not None else shape
+    if isinstance(chunks, tuple) and (-numpy.array([i>=j for i,j in zip(tmp_shape,chunks) if i is not None])).any():
+        errmsg = "Chunk shape must not be greater than data shape in any dimension. "\
+                 "{} is not compatible with {}".format(chunks, shape)
+        raise ValueError(errmsg)
+
+    if isinstance(dtype, h5py.Datatype):
+        # Named types are used as-is
+        tid = dtype.id
+        dtype = tid.dtype  # Following code needs this
+    else:
+        # Validate dtype
+        if dtype is None and data is None:
+            dtype = numpy.dtype("=f4")
+        elif dtype is None and data is not None:
+            dtype = data.dtype
+        else:
+            dtype = numpy.dtype(dtype)
+        tid = h5t.py_create(dtype, logical=1)
+
+    # Legacy
+    if any((compression, shuffle, fletcher32, maxshape,scaleoffset)) and chunks is False:
+        raise ValueError("Chunked format required for given storage options")
+
+    # Legacy
+    if compression is True:
+        if compression_opts is None:
+            compression_opts = 4
+        compression = 'gzip'
+
+    # Legacy
+    if compression in range(10):
+        if compression_opts is not None:
+            raise TypeError("Conflict in compression options")
+        compression_opts = compression
+        compression = 'gzip'
+
+    dcpl = filters.generate_dcpl(shape, dtype, chunks, compression, compression_opts,
+                  shuffle, fletcher32, maxshape, scaleoffset)
+
+    if fillvalue is not None:
+        fillvalue = numpy.array(fillvalue)
+        dcpl.set_fill_value(fillvalue)
+
+    if track_times in (True, False):
+        dcpl.set_obj_track_times(track_times)
+    elif track_times is not None:
+        raise TypeError("track_times must be either True or False")
+
+    if maxshape is not None:
+        maxshape = tuple(m if m is not None else h5s.UNLIMITED for m in maxshape)
+    sid = h5s.create_simple(shape, maxshape)
+
+
+    dset_id = h5d.create_ff(parent.id, name, tid, sid, tr.id, dcpl=dcpl,
+                            es=es.id)
+
+    if data is not None:
+        dset_id.write_ff(h5s.ALL, h5s.ALL, data, tr.id, es=es.id)
+
+    return dset_id
+
+
 class AstypeContext(object):
 
     def __init__(self, dset, dtype):
@@ -126,7 +222,7 @@ class AstypeContext(object):
         self._dset._local.astype = None
 
 
-class Dataset(HLObject):
+class Dataset(Index, HLObject):
 
     """
         Represents an HDF5 dataset
@@ -228,7 +324,7 @@ class Dataset(HLObject):
         dcpl = self._dcpl.get_fill_value(arr)
         return arr[0]
 
-    def __init__(self, bind):
+    def __init__(self, bind, container=None):
         """ Create a new Dataset object by binding to a low-level DatasetID.
         """
         from threading import local
@@ -241,9 +337,19 @@ class Dataset(HLObject):
         self._filters = filters.get_filters(self._dcpl)
         self._local = local()
         self._local.astype = None
+        self._ctn = container
+
+    def close(self):
+        """Close the dataset.
+        
+        For Exascale FastForward.
+        """
+        self.id._close_ff(es=self.es.id)
 
     def resize(self, size, axis=None):
         """ Resize the dataset, or the specified axis.
+
+        For Exascale FastForward.
 
         The dataset must be stored in chunked format; it can be resized up to
         the "maximum shape" (keyword maxshape) specified at creation time.
@@ -270,7 +376,7 @@ class Dataset(HLObject):
             size[axis] = newlen
 
         size = tuple(size)
-        self.id.set_extent(size)
+        self.id.set_extent_ff(size, self.tr.id, es=self.es.id)
         #h5f.flush(self.id)  # THG recommends
 
     def __len__(self):
@@ -432,7 +538,7 @@ class Dataset(HLObject):
         # Perfom the actual read
         mspace = h5s.create_simple(mshape)
         fspace = selection._id
-        self.id.read(mspace, fspace, arr, mtype)
+        self.id.read_ff(mspace, fspace, arr, self.rc.id, mtype, es=self.es.id)
 
         # Patch up the output for NumPy
         if len(names) == 1:
@@ -563,10 +669,13 @@ class Dataset(HLObject):
             mshape_pad = mshape
         mspace = h5s.create_simple(mshape_pad, (h5s.UNLIMITED,)*len(mshape_pad))
         for fspace in selection.broadcast(mshape):
-            self.id.write(mspace, fspace, val, mtype)
+            self.id.write_ff(mspace, fspace, val, self.tr.id, mtype,
+                             es=self.es.id)
 
     def read_direct(self, dest, source_sel=None, dest_sel=None):
         """ Read data directly from HDF5 into an existing NumPy array.
+
+        For Exascale FastForward.
 
         The destination array must be C-contiguous and writable.
         Selections must be the output of numpy.s_[<args>].
@@ -586,10 +695,12 @@ class Dataset(HLObject):
             dest_sel = sel.select(dest.shape, dest_sel, self.id)
 
         for mspace in dest_sel.broadcast(source_sel.mshape):
-            self.id.read(mspace, fspace, dest)
+            self.id.read_ff(mspace, fspace, dest, self.rc.id, es=self.es.id)
 
     def write_direct(self, source, source_sel=None, dest_sel=None):
         """ Write data directly to HDF5 from a NumPy array.
+
+        For Exascale FastForward.
 
         The source array must be C-contiguous.  Selections must be
         the output of numpy.s_[<args>].
@@ -608,7 +719,8 @@ class Dataset(HLObject):
             dest_sel = sel.select(self.shape, dest_sel, self.id)
 
         for fspace in dest_sel.broadcast(source_sel.mshape):
-            self.id.write(mspace, fspace, source)
+            self.id.write_ff(mspace, fspace, source, self.tr.id,
+                             es=self.es.id)
 
     def __array__(self, dtype=None):
         """ Create a Numpy array containing the whole dataset.  DON'T THINK

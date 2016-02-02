@@ -11,6 +11,8 @@
     Low-level HDF5 "H5G" group interface.
 """
 
+include "config.pxi"
+
 # Compile-time imports
 from _objects cimport pdefault
 from utils cimport emalloc, efree
@@ -19,6 +21,11 @@ cimport _hdf5 # to implement container testing for 1.6
 from _errors cimport set_error_handler, err_cookie
 
 from h5py import _objects
+
+# For Exascale FastForward
+from h5es cimport EventStackID, esid_default
+from h5tr cimport TransactionID
+from h5rc cimport RCntxtID
 
 # === Public constants and data structures ====================================
 
@@ -120,33 +127,61 @@ cdef class GroupIter:
 # === Basic group management ==================================================
 
 
-def open(ObjectID loc not None, char* name):
-    """(ObjectID loc, STRING name) => GroupID
+#def open(ObjectID loc not None, char* name):
+#    """(ObjectID loc, STRING name) => GroupID
+#
+#    Open an existing HDF5 group, attached to some other group.
+#    """
+#    return GroupID.open(H5Gopen(loc.id, name))
+#
+#def create(ObjectID loc not None, object name, PropID lcpl=None,
+#           PropID gcpl=None):
+#    """(ObjectID loc, STRING name or None, PropLCID lcpl=None,
+#        PropGCID gcpl=None)
+#    => GroupID
+#
+#    Create a new group, under a given parent group.  If name is None,
+#    an anonymous group will be created in the file.
+#    """
+#    cdef hid_t gid
+#    cdef char* cname = NULL
+#    if name is not None:
+#        cname = name
+#
+#    if cname != NULL:
+#        gid = H5Gcreate2(loc.id, cname, pdefault(lcpl), pdefault(gcpl), H5P_DEFAULT)
+#    else:
+#        gid = H5Gcreate_anon(loc.id, pdefault(gcpl), H5P_DEFAULT)
+#
+#    return GroupID.open(gid)
 
-    Open an existing HDF5 group, attached to some other group.
-    """
-    return GroupID.open(H5Gopen(loc.id, name))
+# For Exascale FastForward (replacements for above open() and create())
+IF EFF and MPI:
+    def create(ObjectID loc not None, object name, TransactionID tid,
+                  PropID lcpl=None, PropID gcpl=None, EventStackID esid=None):
+        """(ObjectID loc, STRING name, TransactionID tid=None, PropLCID lcpl=None,
+        PropGCID gcpl=None, EventStackID esid=None) => GroupID
 
-def create(ObjectID loc not None, object name, PropID lcpl=None,
-           PropID gcpl=None):
-    """(ObjectID loc, STRING name or None, PropLCID lcpl=None,
-        PropGCID gcpl=None)
-    => GroupID
-
-    Create a new group, under a given parent group.  If name is None,
-    an anonymous group will be created in the file.
-    """
-    cdef hid_t gid
-    cdef char* cname = NULL
-    if name is not None:
+        Create a new group, under a given parent group. Requires FastForward HDF5
+        library.
+        """
+        cdef hid_t gid
+        cdef char* cname = NULL
         cname = name
+        gid = H5Gcreate_ff(loc.id, cname, pdefault(lcpl), pdefault(gcpl),
+                           H5P_DEFAULT, tid.id, esid_default(esid)) 
+        return GroupID.open(gid)
 
-    if cname != NULL:
-        gid = H5Gcreate2(loc.id, cname, pdefault(lcpl), pdefault(gcpl), H5P_DEFAULT)
-    else:
-        gid = H5Gcreate_anon(loc.id, pdefault(gcpl), H5P_DEFAULT)
 
-    return GroupID.open(gid)
+    def open(ObjectID loc not None, char* name, RCntxtID rcid,
+                EventStackID esid=None):
+        """(ObjectID loc, STRING name, RCntxtID rcid, EventStackID esid=None) => GroupID
+
+        Open an existing HDF5 group, attached to some other group. Requires
+        FastForward HDF5 library.
+        """
+        return GroupID.open(H5Gopen_ff(loc.id, name, H5P_DEFAULT, rcid.id,
+                                       esid_default(esid)))
 
 
 cdef class _GroupVisitor:
@@ -248,15 +283,15 @@ cdef class GroupID(ObjectID):
         self.links = h5l.LinkProxy(id_)
 
 
-    def _close(self):
-        """()
+    def _close(self, EventStackID esid=None):
+        """(EventStackID esid=None)
 
         Terminate access through this identifier.  You shouldn't have to
         call this manually; group identifiers are automatically released
         when their Python wrappers are freed.
         """
         with _objects.registry.lock:
-            H5Gclose(self.id)
+            H5Gclose_ff(self.id, esid_default(esid))
             if not self.valid:
                 del _objects.registry[self.id]
 
@@ -411,6 +446,28 @@ cdef class GroupID(ObjectID):
             return py_cmnt
         finally:
             efree(cmnt)
+
+
+    def evict_ff(self, ctn_ver, PropID dxpl=None, EventStackID es=None):
+        """UINT ctn_ver, PropID dxpl=None, EventStackID es=None)
+
+        Evict group from the burst buffer, possibly asynchronously.
+
+        For Exascale FastForward.
+        """
+        H5Gevict_ff(self.id, <uint64_t>ctn_ver, pdefault(dxpl),
+                    esid_default(es))
+
+
+    def prefetch_ff(self, RCntxtID rc not None, hrpl_t replica_id,
+                    PropID dxpl=None, EventStackID es=None):
+        """(RCntxtID rc, UINT replica_id, PropID dxpl=None, EventStackID es=None)
+
+        For Exascale FastForward.
+        """
+        H5Gprefetch_ff(self.id, rc.id, &replica_id, pdefault(dxpl),
+                       esid_default(es))
+
 
     # === Special methods =====================================================
 

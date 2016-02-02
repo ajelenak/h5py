@@ -74,6 +74,125 @@ cdef herr_t attr_rw(hid_t attr, hid_t mtype, void *progbuf, int read) except -1:
 
     return 0
 
+# For Exascale FastForward
+# objid argument holds either the read context or transaction identifier
+# depending on read or write operation
+cdef herr_t attr_rw_ff(hid_t attr, hid_t mtype, void *progbuf, int read,
+                       hid_t objid, hid_t esid) except -1:
+
+    cdef htri_t need_bkg
+    cdef hid_t atype = -1
+    cdef hid_t aspace = -1
+    cdef hsize_t npoints
+
+    cdef size_t msize, asize
+    cdef void* conv_buf = NULL
+    cdef void* back_buf = NULL
+
+    try:
+        atype = H5Aget_type(attr)
+
+        if not (needs_proxy(atype) or needs_proxy(mtype)):
+            if read:
+                # objid = read context id
+                H5Aread_ff(attr, mtype, progbuf, objid, esid)
+            else:
+                # objid = transaction id
+                H5Awrite_ff(attr, mtype, progbuf, objid, esid)
+
+        else:
+            
+            asize = H5Tget_size(atype)
+            msize = H5Tget_size(mtype)
+            aspace = H5Aget_space(attr)
+            npoints = H5Sget_select_npoints(aspace)
+
+            conv_buf = create_buffer(asize, msize, npoints)
+            
+            if read:
+                need_bkg = needs_bkg_buffer(atype, mtype)
+            else:
+                need_bkg = needs_bkg_buffer(mtype, atype)
+            if need_bkg:
+                back_buf = malloc(msize*npoints)
+                memcpy(back_buf, progbuf, msize*npoints)
+
+            if read:
+                H5Aread_ff(attr, atype, conv_buf, objid, esid)
+                H5Tconvert(atype, mtype, npoints, conv_buf, back_buf, H5P_DEFAULT)
+                memcpy(progbuf, conv_buf, msize*npoints)
+            else:
+                memcpy(conv_buf, progbuf, msize*npoints)
+                H5Tconvert(mtype, atype, npoints, conv_buf, back_buf, H5P_DEFAULT)
+                H5Awrite_ff(attr, atype, conv_buf, objid, esid)
+                H5Dvlen_reclaim(atype, aspace, H5P_DEFAULT, conv_buf)
+
+    finally:
+        free(conv_buf)
+        free(back_buf)
+        if atype > 0:
+            H5Tclose(atype)
+        if aspace > 0:
+            H5Sclose(aspace)
+
+    return 0
+
+# =============================================================================
+# For Exascale FastForward
+cdef herr_t map_del_ff(hid_t map, hid_t mtype, void *progbuf, hid_t trid, hid_t esid) except -1:
+
+    try:
+        if not needs_proxy(mtype):
+            H5Mdelete_ff(map, mtype, progbuf, trid, esid)
+        else:
+            raise NotImplementedError("Proxy buffering not implemented for map "
+                                      "delete operation")
+    finally:
+        pass
+
+    return 0
+
+# =============================================================================
+# For Exascale FastForward
+cdef hbool_t map_check_ff(hid_t map, hid_t mtype, void *progbuf, hid_t rcid, hid_t esid) except -1:
+
+    cdef hbool_t exists
+
+    try:
+        if not needs_proxy(mtype):
+            H5Mexists_ff(map, mtype, progbuf, &exists, rcid, esid)
+        else:
+            raise NotImplementedError("Proxy buffering not implemented for map "
+                                      " exists operation")
+    finally:
+        pass
+
+    return exists
+
+# =============================================================================
+# For Exascale FastForward
+# objid argument holds either the read context or transaction identifier
+# depending on get or set operation
+cdef herr_t map_gs_ff(hid_t map, hid_t key_mtype, void* key_buf,
+                      hid_t val_mtype, void* val_buf, hid_t dxpl,
+                      hid_t objid, hid_t esid, int get) except -1:
+
+    try:
+        if not (needs_proxy(key_mtype) or needs_proxy(val_mtype)):
+            if get:
+                H5Mget_ff(map, key_mtype, key_buf, val_mtype, val_buf, dxpl,
+                          objid, esid)
+            else:
+                H5Mset_ff(map, key_mtype, key_buf, val_mtype, val_buf, dxpl,
+                          objid, esid)
+        else:
+            raise NotImplementedError("Proxy buffering not implemented for map "
+                                      "get/set operation")
+    finally:
+        pass
+
+    return 0
+
 # =============================================================================
 # Proxy functions to safely release the GIL around read/write operations
 
@@ -91,6 +210,26 @@ cdef herr_t H5PY_H5Dwrite(hid_t dset, hid_t mtype, hid_t mspace,
     cdef herr_t retval
     #with nogil:
     retval = H5Dwrite(dset, mtype, mspace, fspace, dxpl, buf)
+    if retval < 0:
+        return -1
+    return retval
+
+cdef herr_t H5PY_H5Dread_ff(hid_t dset, hid_t mtype, hid_t mspace,
+                            hid_t fspace, hid_t dxpl, void* buf, hid_t rcid,
+                            hid_t esid) except -1:
+    cdef herr_t retval
+    #with nogil:
+    retval = H5Dread_ff(dset, mtype, mspace, fspace, dxpl, buf, rcid, esid)
+    if retval < 0:
+        return -1
+    return retval
+
+cdef herr_t H5PY_H5Dwrite_ff(hid_t dset, hid_t mtype, hid_t mspace,
+                             hid_t fspace, hid_t dxpl, void* buf, hid_t trid,
+                             hid_t esid) except -1:
+    cdef herr_t retval
+    #with nogil:
+    retval = H5Dwrite_ff(dset, mtype, mspace, fspace, dxpl, buf, trid, esid)
     if retval < 0:
         return -1
     return retval
@@ -162,6 +301,92 @@ cdef herr_t dset_rw(hid_t dset, hid_t mtype, hid_t mspace, hid_t fspace,
                 h5py_copy(mtype, mspace, conv_buf, progbuf, H5PY_GATHER)
                 H5Tconvert(mtype, dstype, npoints, conv_buf, back_buf, dxpl)
                 H5PY_H5Dwrite(dset, dstype, cspace, fspace, dxpl, conv_buf)
+                H5Dvlen_reclaim(dstype, cspace, H5P_DEFAULT, conv_buf)
+ 
+    finally:
+        free(back_buf)
+        free(conv_buf)
+        if dstype > 0:
+            H5Tclose(dstype)
+        if dspace > 0:
+            H5Sclose(dspace)
+        if cspace > 0:
+            H5Sclose(cspace)
+
+    return 0
+
+
+# Version for Exascale FastForward
+cdef herr_t dset_rw_ff(hid_t dset, hid_t mtype, hid_t mspace, hid_t fspace,
+                       hid_t dxpl, void* progbuf, int read, hid_t objid,
+                       hid_t esid) except -1:
+    # objid holds either a read context or transaction id, depending on read
+    # or write operation
+
+    cdef htri_t need_bkg
+    cdef hid_t dstype = -1      # Dataset datatype
+    cdef hid_t rawdstype = -1
+    cdef hid_t dspace = -1      # Dataset dataspace
+    cdef hid_t cspace = -1      # Temporary contiguous dataspaces
+
+    cdef void* back_buf = NULL
+    cdef void* conv_buf = NULL
+    cdef hsize_t npoints
+
+    try:
+        # Issue 372: when a compound type is involved, using the dataset type
+        # may result in uninitialized data being sent to H5Tconvert for fields
+        # not present in the memory type.  Limit the type used for the dataset
+        # to only those fields present in the memory type.  We can't use the
+        # memory type directly because of course that triggers HDFFV-1063.
+        if (H5Tget_class(mtype) == H5T_COMPOUND) and (not read):
+            rawdstype = H5Dget_type(dset)
+            dstype = make_reduced_type(mtype, rawdstype)
+            H5Tclose(rawdstype)
+        else:
+            dstype = H5Dget_type(dset)
+
+        if not (needs_proxy(dstype) or needs_proxy(mtype)):
+            if read:
+                H5PY_H5Dread_ff(dset, mtype, mspace, fspace, dxpl, progbuf,
+                                objid, esid)
+            else:
+                H5PY_H5Dwrite_ff(dset, mtype, mspace, fspace, dxpl, progbuf,
+                                 objid, esid)
+        else:
+
+            if mspace == H5S_ALL and fspace != H5S_ALL:
+                mspace = fspace
+            elif mspace != H5S_ALL and fspace == H5S_ALL:
+                fspace = mspace
+            elif mspace == H5S_ALL and fspace == H5S_ALL:
+                fspace = mspace = dspace = H5Dget_space(dset)
+
+            npoints = H5Sget_select_npoints(mspace)
+            cspace = H5Screate_simple(1, &npoints, NULL)
+
+            conv_buf = create_buffer(H5Tget_size(dstype), H5Tget_size(mtype), npoints)
+
+            # Only create a (contiguous) backing buffer if absolutely
+            # necessary. Note this buffer always has memory type.
+            if read:
+                need_bkg = needs_bkg_buffer(dstype, mtype)
+            else:
+                need_bkg = needs_bkg_buffer(mtype, dstype)
+            if need_bkg:
+                back_buf = create_buffer(H5Tget_size(dstype), H5Tget_size(mtype), npoints)
+                h5py_copy(mtype, mspace, back_buf, progbuf, H5PY_GATHER)
+
+            if read:
+                H5PY_H5Dread_ff(dset, dstype, cspace, fspace, dxpl, conv_buf,
+                                objid, esid)
+                H5Tconvert(dstype, mtype, npoints, conv_buf, back_buf, dxpl)
+                h5py_copy(mtype, mspace, conv_buf, progbuf, H5PY_SCATTER)
+            else:
+                h5py_copy(mtype, mspace, conv_buf, progbuf, H5PY_GATHER)
+                H5Tconvert(mtype, dstype, npoints, conv_buf, back_buf, dxpl)
+                H5PY_H5Dwrite_ff(dset, dstype, cspace, fspace, dxpl, conv_buf,
+                                 objid, esid)
                 H5Dvlen_reclaim(dstype, cspace, H5P_DEFAULT, conv_buf)
  
     finally:

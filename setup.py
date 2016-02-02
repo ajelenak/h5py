@@ -89,6 +89,7 @@ def configure_cython(settings, modules):
 
 DEF MPI = %(mpi)s
 DEF HDF5_VERSION = %(hdf5_version)s
+DEF EFF = %(eff)s
 """
     newcontents %= settings
     newcontents = newcontents.encode('utf-8')
@@ -118,6 +119,7 @@ settings.update(configure.scrape_cargs())    # highest priority
 HDF5 = settings.get('hdf5')
 HDF5_VERSION = settings.get('hdf5_version')
 
+EFF = settings.setdefault('eff', False)
 MPI = settings.setdefault('mpi', False)
 if MPI:
     if not HAVE_CYTHON:
@@ -173,6 +175,11 @@ MODULES =  ['defs','_errors','_objects','_proxy', 'h5fd', 'h5z',
             'h5l', 'h5o',
             'h5ds', 'h5ac']
 
+# Exascale FastForward low-level modules
+if EFF:
+    MODULES += ['h5es', 'eff_control', 'h5rc', 'h5tr',
+                'h5m', 'h5q', 'h5v'] #+ ['h5x']
+
 # No Cython, no point in configuring
 if HAVE_CYTHON:     
 
@@ -205,9 +212,9 @@ EXTENSIONS = [make_extension(m) for m in MODULES]
 
 class test(Command):
 
-    """Run the test suite."""
+    """Run the Exascale FastForward test suite."""
 
-    description = "Run the test suite"
+    description = "Run the Exascale FastForward test suite"
 
     user_options = [('verbosity=', 'V', 'set test report verbosity')]
 
@@ -237,9 +244,27 @@ class test(Command):
         buildobj.run()
         oldpath = sys.path
         try:
+            # Make sure newly built h5py is found first...
             sys.path = [op.abspath(buildobj.build_lib)] + oldpath
-            suite = unittest.TestLoader().discover(op.join(buildobj.build_lib,'h5py'))
+
+            # Import build options...
+            from configure import loadpickle
+            settings = loadpickle('h5py_config.pickle')
+            if settings is None:
+                raise RuntimeError("Failed to load build options from %s"
+                                   % 'h5py_config.pickle')
+            EFF = settings.setdefault('eff', False)
+            if EFF:
+                # Discover only FastForward tests...
+                suite = unittest.TestLoader().discover(op.join(buildobj.build_lib,'h5py'),
+                                                       pattern='test_ff*.py')
+            else:
+                # Discover only standard tests...
+                suite = unittest.TestLoader().discover(op.join(buildobj.build_lib,'h5py'))
+
+            # Run found tests...
             result = unittest.TextTestRunner(verbosity=self.verbosity+1).run(suite)
+
             if not result.wasSuccessful():
                 sys.exit(1)
         finally:

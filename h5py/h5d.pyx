@@ -22,6 +22,12 @@ from _proxy cimport dset_rw
 
 from h5py import _objects
 
+# For Exascale FastForward
+from h5tr cimport TransactionID
+from h5es cimport esid_default, EventStackID
+from h5rc cimport RCntxtID
+from _proxy cimport dset_rw_ff
+
 # Initialization
 import_array()
 
@@ -72,6 +78,22 @@ def create(ObjectID loc not None, object name, TypeID tid not None,
                      pdefault(dcpl), pdefault(dapl))
         return DatasetID.open(dsid)
 
+
+def create_ff(ObjectID loc not None, char* name, TypeID tid not None,
+              SpaceID space not None, TransactionID tr not None, PropID dcpl=None,
+              PropID lcpl=None, PropID dapl=None, EventStackID es=None):
+        """ (objectID loc, STRING name or None, TypeID tid, SpaceID space,
+             TransactionID tr, PropDCID dcpl=None, PropID lcpl=None,
+             EventStackID es=None) => DatasetID
+
+        Create a new dataset in Exascale FastForward.
+        """
+        cdef hid_t dsid
+        dsid = H5Dcreate_ff(loc.id, name, tid.id, space.id, pdefault(lcpl), 
+                            pdefault(dcpl), pdefault(dapl), tr.id, esid_default(es))
+        return DatasetID.open(dsid)
+
+
 def open(ObjectID loc not None, char* name, PropID dapl=None):
     """ (ObjectID loc, STRING name, PropID dapl=None) => DatasetID
 
@@ -80,6 +102,20 @@ def open(ObjectID loc not None, char* name, PropID dapl=None):
     If specified, dapl may be a dataset access property list.
     """
     return DatasetID.open(H5Dopen2(loc.id, name, pdefault(dapl)))
+
+
+def open_ff(ObjectID loc not None, char *name, RCntxtID rc not None,
+            PropID dapl=None, EventStackID es=None):
+    """(ObjectID loc, STRING name, RCntxtID rc, PropID dapl=None, EventStackID
+    es=None) => DatasetID
+
+    Open the existing dataset specified by loc and name. loc may be a file
+    identifier or a group identifier. name may be either an absolute path in
+    the file or a relative path from loc naming the dataset. Both loc and name
+    must be in scope for the read context identified by rc.
+    """
+    return DatasetID.open(H5Dopen_ff(loc.id, name, pdefault(dapl), rc.id,
+                          esid_default(es)))
 
 # --- Proxy functions for safe(r) threading -----------------------------------
 
@@ -142,6 +178,21 @@ cdef class DatasetID(ObjectID):
                 del _objects.registry[self.id]
 
 
+    def _close_ff(self, EventStackID es=None):
+        """ (EventStackID es=None)
+
+            Terminate access through this identifier.  You shouldn't have to
+            call this manually; Dataset objects are automatically destroyed
+            when their Python wrappers are freed.
+
+            For Exascale FastForward.
+        """
+        with _objects.registry.lock:
+            H5Dclose_ff(self.id, esid_default(es))
+            if not self.valid:
+                del _objects.registry[self.id]
+
+
     def read(self, SpaceID mspace not None, SpaceID fspace not None,
                    ndarray arr_obj not None, TypeID mtype=None,
                    PropID dxpl=None):
@@ -180,6 +231,52 @@ cdef class DatasetID(ObjectID):
 
         dset_rw(self_id, mtype_id, mspace_id, fspace_id, plist_id, data, 1)
 
+
+    def read_ff(self, SpaceID mspace not None, SpaceID fspace not None,
+                   ndarray arr_obj not None, RCntxtID rc not None, TypeID mtype=None,
+                   PropID dxpl=None, EventStackID es=None):
+        """ (SpaceID mspace, SpaceID fspace, NDARRAY arr_obj, RCntxtID rc,
+             TypeID mtype=None, PropDXID dxpl=None, EventStackID es=None)
+
+            Read data from an HDF5 dataset into a Numpy array.
+
+            It is your responsibility to ensure that the memory dataspace
+            provided is compatible with the shape of the Numpy array.  Since a
+            wide variety of dataspace configurations are possible, this is not
+            checked.  You can easily crash Python by reading in data from too
+            large a dataspace.
+
+            If a memory datatype is not specified, one will be auto-created
+            based on the array's dtype.
+
+            The provided Numpy array must be writable and C-contiguous.  If
+            this is not the case, ValueError will be raised and the read will
+            fail.  Keyword dxpl may be a dataset transfer property list.
+
+            For Exascale FastForward.
+        """
+        cdef hid_t self_id, mtype_id, mspace_id, fspace_id, plist_id
+        cdef hid_t rcid, esid
+        cdef void* data
+        cdef int oldflags
+
+        if mtype is None:
+            mtype = py_create(arr_obj.dtype)
+        check_numpy_write(arr_obj, -1)
+
+        self_id = self.id
+        mtype_id = mtype.id
+        mspace_id = mspace.id
+        fspace_id = fspace.id
+        plist_id = pdefault(dxpl)
+        data = PyArray_DATA(arr_obj)
+        rcid = rc.id
+        esid = esid_default(es)
+
+        dset_rw_ff(self_id, mtype_id, mspace_id, fspace_id, plist_id, data, 1,
+                   rcid, esid)
+
+
     def write(self, SpaceID mspace not None, SpaceID fspace not None,
                     ndarray arr_obj not None, TypeID mtype=None,
                     PropID dxpl=None):
@@ -217,6 +314,52 @@ cdef class DatasetID(ObjectID):
         data = PyArray_DATA(arr_obj)
 
         dset_rw(self_id, mtype_id, mspace_id, fspace_id, plist_id, data, 0)
+
+
+    def write_ff(self, SpaceID mspace not None, SpaceID fspace not None,
+                    ndarray arr_obj not None, TransactionID tr not None,
+                    TypeID mtype=None, PropID dxpl=None, EventStackID es=None):
+        """ (SpaceID mspace, SpaceID fspace, NDARRAY arr_obj, TransactionID tr,
+             TypeID mtype=None, PropDXID dxpl=None, EventStackID es=None)
+
+            Write data from a Numpy array to an HDF5 dataset. Keyword dxpl may
+            be a dataset transfer property list.
+
+            It is your responsibility to ensure that the memory dataspace
+            provided is compatible with the shape of the Numpy array.  Since a
+            wide variety of dataspace configurations are possible, this is not
+            checked.  You can easily crash Python by writing data from too
+            large a dataspace.
+
+            If a memory datatype is not specified, one will be auto-created
+            based on the array's dtype.
+
+            The provided Numpy array must be C-contiguous.  If this is not the
+            case, ValueError will be raised and the read will fail.
+
+            For Exascale FastForward.
+        """
+        cdef hid_t self_id, mtype_id, mspace_id, fspace_id, plist_id
+        cdef hid_t trid, esid
+        cdef void* data
+        cdef int oldflags
+
+        if mtype is None:
+            mtype = py_create(arr_obj.dtype)
+        check_numpy_read(arr_obj, -1)
+
+        self_id = self.id
+        mtype_id = mtype.id
+        mspace_id = mspace.id
+        fspace_id = fspace.id
+        plist_id = pdefault(dxpl)
+        data = PyArray_DATA(arr_obj)
+        trid = tr.id
+        esid = esid_default(es)
+
+        dset_rw_ff(self_id, mtype_id, mspace_id, fspace_id, plist_id, data, 0,
+                   trid, esid)
+
 
     def extend(self, tuple shape):
         """ (TUPLE shape)
@@ -273,6 +416,34 @@ cdef class DatasetID(ObjectID):
             if space_id:
                 H5Sclose(space_id)
 
+
+    def set_extent_ff(self, tuple shape, TransactionID tr not None,
+                      EventStackID es=None):
+        """ (TUPLE shape, TransactionID tr, EventStackID es=None)
+
+            Set the size of the dataspace to match the given shape.  If the new
+            size is larger in any dimension, it must be compatible with the
+            maximum dataspace size.
+        """
+        cdef int rank
+        cdef hid_t space_id = 0
+        cdef hsize_t* dims = NULL
+
+        try:
+            space_id = H5Dget_space(self.id)
+            rank = H5Sget_simple_extent_ndims(space_id)
+
+            if len(shape) != rank:
+                raise TypeError("New shape length (%d) must match dataset rank (%d)" % (len(shape), rank))
+
+            dims = <hsize_t*>emalloc(sizeof(hsize_t)*rank)
+            convert_tuple(shape, dims, rank)
+            H5Dset_extent_ff(self.id, dims, tr.id, esid_default(es))
+
+        finally:
+            efree(dims)
+            if space_id:
+                H5Sclose(space_id)
 
 
     def get_space(self):
@@ -347,3 +518,27 @@ cdef class DatasetID(ObjectID):
             may even be zero.
         """
         return H5Dget_storage_size(self.id)
+
+
+    def evict_ff(self, ctn_ver, PropID dxpl=None, EventStackID es=None):
+        """UINT ctn_ver, PropID dxpl=None, EventStackID es=None)
+
+        Evict dataset from the burst buffer, possibly asynchronously.
+
+        For Exascale FastForward.
+        """
+        H5Devict_ff(self.id, <uint64_t>ctn_ver, pdefault(dxpl),
+                    esid_default(es))
+
+
+    def prefetch_ff(self, RCntxtID rc not None, hrpl_t replica_id,
+                    PropID dxpl=None, EventStackID es=None):
+        """(RCntxtID rc, UINT replica_id, PropID dxpl=None, EventStackID es=None)
+
+        Prefetch all or part of a dataset from persistent storage to burst
+        buffer storage, possibly asynchronously.
+
+        For Exascale FastForward.
+        """
+        H5Dprefetch_ff(self.id, rc.id, &replica_id, pdefault(dxpl),
+                       esid_default(es))

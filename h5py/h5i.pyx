@@ -23,6 +23,12 @@ REFERENCE   = H5I_REFERENCE
 GENPROP_CLS = H5I_GENPROP_CLS
 GENPROP_LST = H5I_GENPROP_LST
 DATATYPE    = H5I_DATATYPE
+MAP         = H5I_MAP
+ES          = H5I_ES
+RC          = H5I_RC
+TR          = H5I_TR
+QUERY       = H5I_QUERY
+VIEW        = H5I_VIEW
 
 cpdef ObjectID wrap_identifier(hid_t ident):
 
@@ -48,6 +54,12 @@ cpdef ObjectID wrap_identifier(hid_t ident):
     elif typecode == H5I_GENPROP_LST:
         import h5p
         obj = h5p.propwrap(ident)
+    elif typecode == H5I_MAP:
+        import h5m
+        obj = h5m.MapID.open(ident)
+    elif typecode == H5I_DATASPACE:
+        import h5s
+        obj = h5s.SpaceID.open(ident)
     else:
         raise ValueError("Unrecognized type code %d" % typecode)
 

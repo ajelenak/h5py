@@ -10,12 +10,18 @@
 """
     API for the "H5L" family of link-related operations.  Defines the class
     LinkProxy, which comes attached to GroupID objects as <obj>.links.
+    With additions for the Exascale FastForward project.
 """
 
 from _objects cimport pdefault
 from h5p cimport PropID
 from h5g cimport GroupID
 from utils cimport emalloc, efree
+
+# For Exascale FastForward
+from h5es cimport esid_default, EventStackID
+from h5tr cimport TransactionID
+from h5rc cimport RCntxtID
 
 # === Public constants ========================================================
 
@@ -39,6 +45,30 @@ cdef class LinkInfo:
         """ Creation order """
         def __get__(self):
             return self.infostruct.corder
+    property cset:
+        """ Integer type code for character set (h5t.CSET_*) """
+        def __get__(self):
+            return self.infostruct.cset
+    property u:
+        """ Either the address of a hard link or the size of a soft/UD link """
+        def __get__(self):
+            if self.infostruct.type == H5L_TYPE_HARD:
+                return self.infostruct.u.address
+            else:
+                return self.infostruct.u.val_size
+
+cdef class LinkInfo_ff:
+    """
+    Represent H5L_ff_info_t struct
+    For Exascale FastForward    
+    """
+
+    cdef H5L_ff_info_t infostruct
+
+    property type:
+        """ Integer type code for link (h5l.TYPE_*) """
+        def __get__(self):
+            return <int>self.infostruct.type
     property cset:
         """ Integer type code for character set (h5t.CSET_*) """
         def __get__(self):
@@ -128,6 +158,22 @@ cdef class LinkProxy:
             pdefault(lcpl), pdefault(lapl))
 
 
+    def create_hard_ff(self, char* new_name, GroupID cur_loc not None,
+                       char* cur_name, TransactionID tr, PropID lcpl=None,
+                       PropID lapl=None, EventStackID es=None):
+        """ (STRING new_name, GroupID cur_loc, STRING cur_name, TransactionID tr,
+        PropID lcpl=None, PropID lapl=None, EventStackID es=None)
+
+        For Exascale FastForward.
+
+        Create a new hard link in this group pointing to an existing link
+        in another group, possibly asynchronously.
+        """
+        H5Lcreate_hard_ff(cur_loc.id, cur_name, self.id, new_name,
+                          pdefault(lcpl), pdefault(lapl), tr.id,
+                          esid_default(es))
+
+
     def create_soft(self, char* new_name, char* target,
         PropID lcpl=None, PropID lapl=None):
         """(STRING new_name, STRING target, PropID lcpl=None, PropID lapl=None)
@@ -137,6 +183,20 @@ cdef class LinkProxy:
         """
         H5Lcreate_soft(target, self.id, new_name,
             pdefault(lcpl), pdefault(lapl))
+
+
+    def create_soft_ff(self, char* new_name, char* target, TransactionID tr not None,
+                       PropID lcpl=None, PropID lapl=None, EventStackID es=None):
+        """(STRING new_name, STRING target, TransactionID tr, PropID lcpl=None,
+        PropID lapl=None, EventStackID es=None)
+
+        For Exascale FastForward.
+
+        Create a new soft link in this group, with the given string value.
+        The link target does not need to exist.
+        """
+        H5Lcreate_soft_ff(target, self.id, new_name, pdefault(lcpl),
+                          pdefault(lapl), tr.id, esid_default(es))
 
 
     def create_external(self, char* link_name, char* file_name, char* obj_name,
@@ -183,6 +243,44 @@ cdef class LinkProxy:
         return py_retval
 
 
+    def get_val_ff(self, char* name, RCntxtID rc not None, PropID lapl=None,
+                   EventStackID es=None):
+        """(STRING name, RCntxtID rc, PropLAID lapl=None, EventStackID es=None) => STRING or TUPLE(file, obj)
+
+        For Exascale FastForward. (TODO: This is done without man page. To be
+        verified.)
+
+        Get the string value of a soft link, or a 2-tuple representing
+        the contents of an external link.
+        """
+        cdef hid_t plist = pdefault(lapl)
+        cdef H5L_ff_info_t info
+        cdef size_t buf_size
+        cdef char* buf = NULL
+        cdef char* ext_file_name = NULL
+        cdef char* ext_obj_name = NULL
+        cdef unsigned int wtf = 0
+        cdef hid_t esid = esid_default(es)
+
+        H5Lget_info_ff(self.id, name, &info, plist, rc.id, esid)
+        if info.type != H5L_TYPE_SOFT and info.type != H5L_TYPE_EXTERNAL:
+            raise TypeError("Link must be either a soft or external link")
+
+        buf_size = info.u.val_size
+        buf = <char*>emalloc(buf_size)
+        try:
+            H5Lget_val_ff(self.id, name, buf, buf_size, plist, rc.id, esid)
+            if info.type == H5L_TYPE_SOFT:
+                py_retval = buf
+            else:
+                H5Lunpack_elink_val(buf, buf_size, &wtf, &ext_file_name, &ext_obj_name)
+                py_retval = (bytes(ext_file_name), bytes(ext_obj_name))
+        finally:
+            efree(buf)
+
+        return py_retval
+
+
     def move(self, char* src_name, GroupID dst_loc not None, char* dst_name,
         PropID lcpl=None, PropID lapl=None):
         """ (STRING src_name, GroupID dst_loc, STRING dst_name)
@@ -193,12 +291,64 @@ cdef class LinkProxy:
                 pdefault(lapl))
 
 
+    def move_ff(self, char* src_name, GroupID dst_loc not None, char* dst_name,
+                TransactionID tr not None, PropID lcpl=None, PropID lapl=None,
+                EventStackID es=None):
+        """ (STRING src_name, GroupID dst_loc, STRING dst_name, TransactionID tr,
+        PropID lcpl=None, PropID lapl=None, EventStackID es=None)
+
+        For Exascale FastForward.
+
+        Move a link to a new location in the file, possibly asynchronously.
+        """
+        H5Lmove_ff(self.id, src_name, dst_loc.id, dst_name, pdefault(lcpl),
+                   pdefault(lapl), tr.id, esid_default(es))
+
+
+    def copy_ff(self, char* src_name, GroupID dst_loc not None, char* dst_name,
+                TransactionID tr not None, PropID lcpl=None, PropID lapl=None,
+                EventStackID es=None):
+        """ (STRING src_name, GroupID dst_loc, STRING dst_name, TransactionID tr,
+        PropID lcpl=None, PropID lapl=None, EventStackID es=None)
+
+        For Exascale FastForward.
+
+        Copy a link to a new location in the file, possibly asynchronously.
+        """
+        H5Lcopy_ff(self.id, src_name, dst_loc.id, dst_name, pdefault(lcpl),
+                   pdefault(lapl), tr.id, esid_default(es))
+
+
+    def delete_ff(self, char* name, TransactionID tr not None,
+                  PropID lapl=None, EventStackID es=None):
+        """(STRING name, TransactionID tr, PropID lapl=None, EventStackID es=None)
+
+        For Exascale FastForward.
+
+        Removes a link from a group, possibly asynchronously.
+        """
+        H5Ldelete_ff(self.id, name, pdefault(lapl), tr.id, esid_default(es))
+
+
     def exists(self, char* name):
         """ (STRING name) => BOOL
 
             Check if a link of the specified name exists in this group.
         """
         return <bint>(H5Lexists(self.id, name, H5P_DEFAULT))
+
+
+    def exists_ff(self, char* name, RCntxtID rc not None, PropID lapl=None,
+                  EventStackID es=None):
+        """ (STRING name, RCntxtID rc, PropID lapl=None, EventStackID es=None) => BOOL
+
+        For Exascale FastForward.
+
+        Check if a link of the specified name exists in this group.
+        """
+        cdef hbool_t exists
+        H5Lexists_ff(self.id, name, pdefault(lapl), &exists, rc.id, esid_default(es))
+        return <bint>exists
 
 
     def get_info(self, char* name, int index=-1, *, PropID lapl=None):
@@ -210,6 +360,20 @@ cdef class LinkProxy:
         """
         cdef LinkInfo info = LinkInfo()
         H5Lget_info(self.id, name, &info.infostruct, pdefault(lapl))
+        return info
+
+
+    def get_info_ff(self, char* name, RCntxtID rc not None, PropID lapl=None,
+                    EventStackID es=None):
+        """(STRING name=, RCntxtID rc, PropID lapl=None, EventStackID es=None) => LinkInfo_ff instance
+
+        For Exascale FastForward.
+
+        Get information about a link.
+        """
+        cdef LinkInfo_ff info = LinkInfo_ff()
+        H5Lget_info_ff(self.id, name, &info.infostruct, pdefault(lapl), rc.id,
+                       esid_default(es))
         return info
 
 

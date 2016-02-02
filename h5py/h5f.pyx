@@ -24,6 +24,10 @@ from utils cimport emalloc, efree
 from h5py import _objects
 import h5fd
 
+# For Exascale FastForward
+from h5es cimport EventStackID, esid_default
+from h5rc cimport RCntxtID
+
 # Initialization
 
 # === Public constants and data structures ====================================
@@ -55,28 +59,52 @@ LIBVER_LATEST = H5F_LIBVER_LATEST
 # === File operations =========================================================
 
 
-def open(char* name, unsigned int flags=H5F_ACC_RDWR, PropFAID fapl=None):
-    """(STRING name, UINT flags=ACC_RDWR, PropFAID fapl=None) => FileID
+#def open(char* name, unsigned int flags=H5F_ACC_RDWR, PropFAID fapl=None):
+#    """(STRING name, UINT flags=ACC_RDWR, PropFAID fapl=None) => FileID
+#
+#    Open an existing HDF5 file.  Keyword "flags" may be:
+#
+#    ACC_RDWR
+#        Open in read-write mode
+#
+#    ACC_RDONLY
+#        Open in readonly mode
+#
+#    Keyword fapl may be a file access property list.
+#    """
+#    return FileID.open(H5Fopen(name, flags, pdefault(fapl)))
+#
+#
+#def create(char* name, int flags=H5F_ACC_TRUNC, PropFCID fcpl=None,
+#                                                PropFAID fapl=None):
+#    """(STRING name, INT flags=ACC_TRUNC, PropFCID fcpl=None,
+#    PropFAID fapl=None) => FileID
+#    
+#    Create a new HDF5 file.  Keyword "flags" may be:
+#
+#    ACC_TRUNC
+#        Truncate an existing file, discarding its data
+#
+#    ACC_EXCL
+#        Fail if a conflicting file exists
+#
+#    To keep the behavior in line with that of Python's built-in functions,
+#    the default is ACC_TRUNC.  Be careful!
+#    """
+#    return FileID.open(H5Fcreate(name, flags, pdefault(fcpl), pdefault(fapl)))
 
-    Open an existing HDF5 file.  Keyword "flags" may be:
 
-    ACC_RDWR
-        Open in read-write mode
-
-    ACC_RDONLY
-        Open in readonly mode
-
-    Keyword fapl may be a file access property list.
-    """
-    return FileID.open(H5Fopen(name, flags, pdefault(fapl)))
-
-
-def create(char* name, int flags=H5F_ACC_TRUNC, PropFCID fcpl=None,
-                                                PropFAID fapl=None):
+# FastForward replacement for create()
+def create(char *name, int flags=H5F_ACC_TRUNC, PropFCID fcpl=None,
+              PropFAID fapl=None, EventStackID es=None):
     """(STRING name, INT flags=ACC_TRUNC, PropFCID fcpl=None,
-    PropFAID fapl=None) => FileID
+    PropFAID fapl=None, EventStackID es=None) => FileID
 
-    Create a new HDF5 file.  Keyword "flags" may be:
+    Create an HDF5 file (container), possibly asynchronously. This is the
+    primary function for creating HDF5 containers on the Exascale
+    FastForward storage system.
+
+    Keyword "flags" may be:
 
     ACC_TRUNC
         Truncate an existing file, discarding its data
@@ -86,8 +114,60 @@ def create(char* name, int flags=H5F_ACC_TRUNC, PropFCID fcpl=None,
 
     To keep the behavior in line with that of Python's built-in functions,
     the default is ACC_TRUNC.  Be careful!
+
+    The es parameter indicates the event stack the event object
+    for this call should be pushed onto when the function is
+    executed asynchronously. The function may be executed
+    synchronously by not passing this parameter.
+
+    Requires FastForward HDF5  (prereq.: MPI, Parallel HDF5).
     """
-    return FileID.open(H5Fcreate(name, flags, pdefault(fcpl), pdefault(fapl)))
+    
+    return FileID.open(H5Fcreate_ff(name, flags, pdefault(fcpl), pdefault(fapl), esid_default(es)))
+
+
+# FastForward replacement for open()
+def open(char* name, unsigned int flags=H5F_ACC_RDWR,
+            PropFAID fapl=None, bint rc=False, EventStackID es=None):
+    """(STRING name, UINT flags=ACC_RDWR, PropFAID fapl=None,
+    BOOL rc=False, EventStackID es=None) => TUPLE(FileID, RCntxtID/None)
+
+    Open an existing HDF5 file (container), possibly asynchronously.
+    This is the primary function for accessing existing HDF5 containers
+    on the Exascale FastForward storage system.
+
+    Keyword "flags" may be:
+
+    ACC_RDWR
+        Open in read-write mode
+
+    ACC_RDONLY
+        Open in readonly mode
+
+    Keyword fapl may be a file access property list.
+
+    The rc flag indicates whether the function should acquire a read
+    context for the last (highest) container version of the successfully
+    opened container as well. If the flag is False (default) no read
+    context will be acquired and the return value in the tuple will be
+    None.
+
+    The es parameter indicates the event stack the event object for
+    this call should be pushed onto when the function is executed
+    asynchronously. The function may be executed synchronously by not
+    passing this parameter.
+
+    Requires FastForward HDF5  (prereq.: MPI, Parallel HDF5).
+    """
+
+    cdef hid_t rcid
+    cdef hid_t fid
+    if rc:
+        fid = H5Fopen_ff(name, flags, pdefault(fapl), &rcid, esid_default(es))
+        return (FileID.open(fid), RCntxtID.open(rcid))
+    else:
+        fid = H5Fopen_ff(name, flags, pdefault(fapl), NULL, esid_default(es))
+        return (FileID.open(fid), None)
 
 
 def flush(ObjectID obj not None, int scope=H5F_SCOPE_LOCAL):
@@ -258,18 +338,46 @@ cdef class FileID(GroupID):
         self.locked = True
 
 
-    def close(self):
-        """()
+    IF EFF:
+        def close(self, bint persist=True, EventStackID es=None):
+            """(BOOL persist=True, EventStackID es=None)
 
-        Terminate access through this identifier.  Note that depending on
-        what property list settings were used to open the file, the
-        physical file might not be closed until all remaining open
-        identifiers are freed.
-        """
-        with _objects.registry.lock:
-            self.locked = False
-            H5Fclose(self.id)
-            _objects.registry.cleanup()
+            Terminate access through this identifier.  Note that depending on
+            what property list settings were used to open the file, the
+            physical file might not be closed until all remaining open
+            identifiers are freed.
+
+            By default, H5Fclose_ff will call persist (H5RCpersist) on that last
+            transaction. The user can opt not persist the final transaction created
+            by H5Fclose_ff by setting persist to None.  The container will
+            still be readable and correct, but there will be some performance loss
+            if the additional file metadata is not persisted.
+
+            The es parameter indicates the event stack the event object
+            for this call should be pushed onto when the function is
+            executed asynchronously. The function may be executed
+            synchronously by not passing this parameter.
+
+            Requires HDF5 FastForward library.
+            """
+
+            with _objects.registry.lock:
+                self.locked = False
+                H5Fclose_ff(self.id, <hbool_t>persist, esid_default(es))
+                _objects.registry.cleanup()
+    ELSE:
+        def close(self):
+            """()
+
+            Terminate access through this identifier.  Note that depending on
+            what property list settings were used to open the file, the
+            physical file might not be closed until all remaining open
+            identifiers are freed.
+            """
+            with _objects.registry.lock:
+                self.locked = False
+                H5Fclose(self.id)
+                _objects.registry.cleanup()
 
 
     def reopen(self):
@@ -346,32 +454,34 @@ cdef class FileID(GroupID):
         return handle[0]
 
 
-    IF MPI and HDF5_VERSION >= (1, 8, 9):
+    IF MPI:
+       IF HDF5_VERSION >= (1, 8, 9):
 
-        def set_mpi_atomicity(self, bint atomicity):
-            """ (BOOL atomicity)
+           def set_mpi_atomicity(self, bint atomicity):
+               """ (BOOL atomicity)
 
-            For MPI-IO driver, set to atomic (True), which guarantees sequential 
-            I/O semantics, or non-atomic (False), which improves  performance.
+               For MPI-IO driver, set to atomic (True), which guarantees sequential 
+               I/O semantics, or non-atomic (False), which improves  performance.
 
-            Default is False.
+               Default is False.
 
-            Feature requires: 1.8.9 and Parallel HDF5
-            """
-            H5Fset_mpi_atomicity(self.id, <hbool_t>atomicity)
+               Feature requires: 1.8.9 and Parallel HDF5
+               """
+               H5Fset_mpi_atomicity(self.id, <hbool_t>atomicity)
 
 
-        def get_mpi_atomicity(self):
-            """ () => BOOL
+           def get_mpi_atomicity(self):
+               """ () => BOOL
 
-            Return atomicity setting for MPI-IO driver.
+               Return atomicity setting for MPI-IO driver.
 
-            Feature requires: 1.8.9 and Parallel HDF5
-            """
-            cdef hbool_t atom
+               Feature requires: 1.8.9 and Parallel HDF5
+               """
+               cdef hbool_t atom
 
-            H5Fget_mpi_atomicity(self.id, &atom)
-            return <bint>atom
+               H5Fget_mpi_atomicity(self.id, &atom)
+               return <bint>atom
+
 
     def get_mdc_hit_rate(self):
         """() => DOUBLE

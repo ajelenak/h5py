@@ -81,3 +81,28 @@ cdef class PropGCID(PropOCID):
 
 cdef hid_t pdefault(PropID pid)
 cdef object propwrap(hid_t id_in)
+
+# --- For Exascale FastForward ---
+
+cdef class PropRCAID(PropInstanceID):
+    """ Read Context Acquire property list """
+    pass
+
+cdef class PropTSID(PropInstanceID):
+    """ Transaction start property list """
+    pass
+
+cdef hid_t tsdefault(PropTSID tsid)
+
+cdef class PropTAID(PropInstanceID):
+    """ Datatype access property list """
+    pass
+
+# Datatype creation property list
+cdef class PropTCID(PropCreateID):
+    """ Datatype creation property list """
+    pass
+
+cdef class PropVCID(PropCreateID):
+    """ View creation property list """
+    pass

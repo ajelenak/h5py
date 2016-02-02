@@ -15,4 +15,9 @@ from _hl.dataset import Dataset
 from _hl.datatype import Datatype
 from _hl.attrs import AttributeManager
 
-
+# Exascale FastForward
+from _hl.event_stack import EventStack
+from _hl.maps import Map
+from _hl import index
+from _hl.query import AQuery, CQuery
+from _hl.view import View

@@ -8,7 +8,7 @@
 #           and contributor agreement.
 
 """
-    HDF5 "H5T" data-type API
+    HDF5 "H5T" data-type API with FastForward Additions
 
     This module contains the datatype identifier class TypeID, and its
     subclasses which represent things like integer/float/compound identifiers.
@@ -23,6 +23,10 @@ from h5r cimport Reference, RegionReference
 
 from utils cimport  emalloc, efree, \
                     require_tuple, convert_dims, convert_tuple
+from h5p cimport pdefault as h5p_default, PropTAID, PropTCID, PropID
+from h5rc cimport RCntxtID
+from h5es cimport esid_default, EventStackID
+from h5tr cimport TransactionID
 
 # Runtime imports
 import sys
@@ -240,6 +244,22 @@ def open(ObjectID group not None, char* name):
     """
     return typewrap(H5Topen(group.id, name))
 
+def open_ff(ObjectID group not None, char *name, RCntxtID rc,
+            PropTAID tapl=None, EventStackID es=None):
+    """(ObjectID group, STRING name, RCntxtID rc, PropTAID tapl=None, EventStackID es=None) => TypeID
+
+    Open a named datatype at the location specified and return an
+    identifier for the datatype.
+    
+    group: either a file or group identifier
+
+    name: is the path to the named datatype object relative to group.
+    
+    Both group and name must be in scope for the read context identified by
+    rc. es is an EventStackID identifier object.
+    """
+    return typewrap(H5Topen_ff(group.id, name, h5p_default(tapl), rc.id, esid_default(es)))
+
 
 def array_create(TypeID base not None, object dims_tpl):
     """(TypeID base, TUPLE dimensions) => TypeArrayID
@@ -348,7 +368,20 @@ cdef class TypeID(ObjectID):
         """
         H5Tcommit2(group.id, name, self.id, pdefault(lcpl),
             H5P_DEFAULT, H5P_DEFAULT)
-    
+
+    def commit_ff(self, ObjectID group, char* name, TransactionID tr,
+                  ObjectID lcpl=None, PropTCID tcpl=None, PropTAID tapl=None,
+                  EventStackID es=None):
+        """(ObjectID group, STRING name, TransactionID tr, PropID lcpl=None,
+            PropTCID tcpl=None, PropTAID tapl=None, EventStackID es=None)
+
+        Commit a transient datatype, linking it into the file and creating a
+        new named datatype, possibly asynchronously.
+        """
+        H5Tcommit_ff(group.id, name, self.id, pdefault(lcpl), h5p_default(tcpl),
+                     h5p_default(tapl), tr.id, esid_default(es))
+
+
     def committed(self):
         """() => BOOL is_comitted
 
@@ -435,6 +468,37 @@ cdef class TypeID(ObjectID):
         """
         if not self.locked:
             H5Tclose(self.id)
+
+
+    def _close_ff(self, EventStackID es=None):
+        """(EventStackID es=None)
+
+        Releases a datatype, possibly asynchronously.
+        """
+        if not self.locked:
+            H5Tclose_ff(self.id, esid_default(es))
+
+
+    def evict_ff(self, ctn_ver, PropID dxpl=None, EventStackID es=None):
+        """UINT ctn_ver, PropID dxpl=None, EventStackID es=None)
+
+        Evict named datatype attribute from the burst buffer, possibly
+        asynchronously.
+
+        For Exascale FastForward.
+        """
+        H5Tevict_ff(self.id, <uint64_t>ctn_ver, h5p_default(dxpl),
+                    esid_default(es))
+
+
+    def prefetch_ff(self, RCntxtID rc not None, hrpl_t replica_id,
+                    PropID dxpl=None, EventStackID es=None):
+        """(RCntxtID rc, UINT replica_id, PropID dxpl=None, EventStackID es=None)
+
+        For Exascale FastForward.
+        """
+        H5Tprefetch_ff(self.id, rc.id, &replica_id, h5p_default(dxpl),
+                       esid_default(es))
 
 
     def encode(self):

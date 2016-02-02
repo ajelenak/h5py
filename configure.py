@@ -9,6 +9,8 @@
     "hdf5": <path to HDF5>
     "mpi": bool, should we build in mpi mode
     "hdf5_version": 3-tuple (major, minor, release)
+    "eff": bool, build for the Exascale FastForward project
+           (will set the "mpi" option to True)
 """
 
 import os, sys
@@ -127,6 +129,17 @@ def scrape_cargs():
 
         if arg.find('--api=') == 0:
             printerr("--api option ignored (Support for HDF5 1.6 dropped)")
+            sys.argv.remove(arg)
+
+        # For Exascale FastForward
+        if arg.find('--eff') == 0:
+            if arg in ('--eff', '--eff=yes'):
+                settings['eff'] = True
+                settings['mpi'] = True
+            elif arg == '--eff=no':
+                settings['eff'] = False
+            else:
+                raise ValueError("Invalid option for --eff (--eff or --eff=[yes|no])")
             sys.argv.remove(arg)
 
     savepickle('h5py_config.pickle', settings)

@@ -9,6 +9,7 @@
 
 """
     Provides access to the low-level HDF5 "H5A" attribute interface.
+    With additions for the Exascale FastForward project.
 """
 
 # Compile-time imports
@@ -18,9 +19,14 @@ from h5s cimport SpaceID
 from h5p cimport PropID
 from numpy cimport import_array, ndarray, PyArray_DATA
 from utils cimport check_numpy_read, check_numpy_write, emalloc, efree
-from _proxy cimport attr_rw
+from _proxy cimport attr_rw, attr_rw_ff
 
 from h5py import _objects
+
+# For Exascale FastForward
+from h5es cimport esid_default, EventStackID
+from h5tr cimport TransactionID
+from h5rc cimport RCntxtID
 
 # Initialization
 import_array()
@@ -45,6 +51,29 @@ def create(ObjectID loc not None, char* name, TypeID tid not None,
     return AttrID.open(H5Acreate_by_name(loc.id, obj_name, name, tid.id,
             space.id, H5P_DEFAULT, H5P_DEFAULT, pdefault(lapl)))
 
+
+# --- create_ff, create_by_name_ff ---
+
+def create_ff(ObjectID loc not None, char* name, TypeID tid not None,
+              SpaceID space not None, TransactionID tr not None, EventStackID es=None,
+              *, char* obj_name='.', PropID lapl=None):
+    """(ObjectID loc, STRING name, TypeID tid, SpaceID space, TransactionID tr, EventStackID es=None, **kwds) => AttrID
+
+    For Exascale FastForward.
+
+    Create a new attribute, possibly asynchronously, attached to an existing
+    object. Keywords:
+
+    STRING obj_name (".")
+        Attach attribute to this group member instead
+
+    PropID lapl
+        Link access property list for obj_name
+    """
+
+    return AttrID.open(H5Acreate_by_name_ff(loc.id, obj_name, name, tid.id,
+                                            space.id, H5P_DEFAULT, H5P_DEFAULT,
+                                            H5P_DEFAULT, tr.id, esid_default(es)))
 
 # --- open, open_by_name, open_by_idx ---
 
@@ -79,6 +108,48 @@ def open(ObjectID loc not None, char* name=NULL, int index=-1, *,
             H5P_DEFAULT, pdefault(lapl)))
 
 
+# --- open_ff, open_by_name_ff, open_by_idx ---
+
+def open_ff(ObjectID loc not None, RCntxtID rc not None, char* name=NULL, int index=-1,
+            *, char* obj_name='.', int index_type=H5_INDEX_NAME, int order=H5_ITER_NATIVE,
+            PropID lapl=None, EventStackID es=None):
+    """(ObjectID loc, RCntxtID rc, STRING name=, INT index=, **kwds) => AttrID
+
+    For Exascale FastForward. H5Aopen_by_name_ff() is used here only.
+
+    Open an attribute attached to an existing objecti, possibly
+    asynchronously. You must specify exactly one of either name or idx.
+    Keywords are:
+
+    STRING obj_name (".")
+        Attribute is attached to this group member
+
+    PropID lapl (None)
+        Link access property list for obj_name
+
+    EventStackID es (None)
+        Event stack identifier object
+
+    INT index_type (h5.INDEX_NAME)
+
+    INT order (h5.ITER_NATIVE)
+
+    """
+    if (name == NULL and index < 0) or (name != NULL and index >= 0):
+        raise TypeError("Exactly one of name or idx must be specified")
+
+    if name != NULL:
+        return AttrID.open(H5Aopen_by_name_ff(loc.id, obj_name, name,
+                                              H5P_DEFAULT, pdefault(lapl),
+                                              rc.id, esid_default(es)))
+    else:
+        # The H5A function below is not part of the Exascale FastForward
+        # project so am nout sure if it will work but for this part stays.
+        return AttrID.open(H5Aopen_by_idx(loc.id, obj_name,
+            <H5_index_t>index_type, <H5_iter_order_t>order, index,
+            H5P_DEFAULT, pdefault(lapl)))
+
+
 # --- exists, exists_by_name ---
 
 def exists(ObjectID loc not None, char* name, *,
@@ -96,6 +167,33 @@ def exists(ObjectID loc not None, char* name, *,
     return <bint>H5Aexists_by_name(loc.id, obj_name, name, pdefault(lapl))
 
 
+# --- exists_ff, exists_by_name_ff ---
+
+def exists_ff(ObjectID loc not None, char* name, RCntxtID rc not None, *,
+              char* obj_name=".", PropID lapl=None, EventStackID es=None):
+    """(ObjectID loc, STRING name, RCntxtID rc, **kwds) => BOOL
+
+    For Exascale FastForward.
+
+    Determine if an attribute is attached to this object, possibly
+    asynchronously. Keywords:
+
+    STRING obj_name (".")
+        Look for attributes attached to this group member
+
+    PropID lapl (None):
+        Link access property list for obj_name
+
+    EventStackID es (None)
+        Event stack identifier
+    """
+    cdef hbool_t exists
+    H5Aexists_ff(loc.id, name, &exists, rc.id, esid_default(es))
+    # H5Aexists_by_name_ff(loc.id, obj_name, name, pdefault(lapl), &exists, rc.id,
+    #                      esid_default(es))
+    return <bint>exists
+
+
 # --- rename, rename_by_name ---
 
 def rename(ObjectID loc not None, char* name, char* new_name, *,
@@ -111,6 +209,29 @@ def rename(ObjectID loc not None, char* name, char* new_name, *,
         Link access property list for obj_name
     """
     H5Arename_by_name(loc.id, obj_name, name, new_name, pdefault(lapl))
+
+
+# --- rename_ff, rename_by_name_ff ---
+
+def rename_ff(ObjectID loc not None, char* name, char* new_name, TransactionID tr not None,
+              *, char* obj_name='.', PropID lapl=None, EventStackID es=None):
+    """(ObjectID loc, STRING name, STRING new_name, TransactionID tr, **kwds)
+
+    For Exascale FastForward.
+
+    Rename an attribute, possibly asynchronously. Keywords:
+
+    STRING obj_name (".")
+        Attribute is attached to this group member
+
+    PropID lapl (None)
+        Link access property list for obj_name
+
+    EventStackID es (None)
+        Event stack identifier.
+    """
+    H5Arename_by_name_ff(loc.id, obj_name, name, new_name, pdefault(lapl),
+                         tr.id, esid_default(es))
 
 
 def delete(ObjectID loc not None, char* name=NULL, int index=-1, *,
@@ -138,6 +259,42 @@ def delete(ObjectID loc not None, char* name=NULL, int index=-1, *,
             <H5_iter_order_t>order, index, pdefault(lapl))
     else:
         raise TypeError("Exactly one of index or name must be specified.")
+
+
+# For Exascale FastForward
+def delete_ff(ObjectID loc not None, TransactionID tr not None, char* name=NULL,
+              int index=-1, *, char* obj_name='.', int index_type=H5_INDEX_NAME,
+              int order=H5_ITER_NATIVE, PropID lapl=None, EventStackID es=None):
+    """(ObjectID loc, TransactionID tr, STRING name=, INT index=, **kwds)
+
+    For Exascale FastForward.
+
+    Remove an attribute from an object, possibly asynchronously. Specify
+    exactly one of "name" or "index". Keyword-only arguments:
+
+    STRING obj_name (".")
+        Attribute is attached to this group member
+
+    PropID lapl (None)
+        Link access property list for obj_name
+
+    EventStackID es (None)
+        Event stack identifier.
+
+    INT index_type (h5.INDEX_NAME)
+
+    INT order (h5.ITER_NATIVE)
+    """
+    if name != NULL and index < 0:
+        H5Adelete_by_name_ff(loc.id, obj_name, name, pdefault(lapl), tr.id, esid_default(es))
+    elif name == NULL and index >= 0:
+        # The function below has no FastForward version so am not sure how it
+        # will work but let's keep it for now.
+        H5Adelete_by_idx(loc.id, obj_name, <H5_index_t>index_type,
+            <H5_iter_order_t>order, index, pdefault(lapl))
+    else:
+        raise TypeError("Exactly one of index or name must be specified.")
+
 
 def get_num_attrs(ObjectID loc not None):
     """(ObjectID loc) => INT
@@ -331,6 +488,21 @@ cdef class AttrID(ObjectID):
                 del _objects.registry[self.id]
 
 
+    def _close_ff(self, EventStackID es=None):
+        """(EventStackID es=None)
+
+        For Exactly FastForward.
+
+        Close this attribute and release resources, possibly asynchronously.
+        You don't need to call this manually; attributes are automatically
+        destroyed when their Python wrappers are freed.
+        """
+        with _objects.registry.lock:
+            H5Aclose_ff(self.id, esid_default(es))
+            if not self.valid:
+                del _objects.registry[self.id]
+
+
     def read(self, ndarray arr not None):
         """(NDARRAY arr)
 
@@ -358,6 +530,36 @@ cdef class AttrID(ObjectID):
                 H5Sclose(space_id)
 
 
+    def read_ff(self, ndarray arr not None, RCntxtID rc not None,
+                EventStackID es=None):
+        """(NDARRAY arr, RCntxtID rc, EventStackID es=None)
+
+        For Exascale FastForward.
+
+        Read the attribute data into the given Numpy array, possibly
+        asynchronously. Note that the Numpy array must have the same shape as
+        the HDF5 attribute, and a conversion-compatible datatype.
+
+        The Numpy array must be writable and C-contiguous.  If this is not
+        the case, the read will fail with an exception.
+        """
+        cdef TypeID mtype
+        cdef hid_t space_id
+        space_id = 0
+
+        try:
+            space_id = H5Aget_space(self.id)
+            check_numpy_write(arr, space_id)
+
+            mtype = py_create(arr.dtype)
+
+            attr_rw_ff(self.id, mtype.id, PyArray_DATA(arr), 1, rc.id, esid_default(es))
+
+        finally:
+            if space_id:
+                H5Sclose(space_id)
+
+
     def write(self, ndarray arr not None):
         """(NDARRAY arr)
 
@@ -378,6 +580,36 @@ cdef class AttrID(ObjectID):
             mtype = py_create(arr.dtype)
 
             attr_rw(self.id, mtype.id, PyArray_DATA(arr), 0)
+
+        finally:
+            if space_id:
+                H5Sclose(space_id)
+
+
+    # For Exascale FastForward
+    def write_ff(self, ndarray arr not None, TransactionID tr not None,
+                 EventStackID es=None):
+        """(NDARRAY arr, TransactionID tr, EventStackID es=None)
+
+        For Exascale FastForward.
+
+        Write the contents of a Numpy array too the attribute, possibly
+        asynchronously. Note that the Numpy array must have the same shape as
+        the HDF5 attribute, and a conversion-compatible datatype.
+
+        The Numpy array must be C-contiguous.  If this is not the case, the
+        write will fail with an exception.
+        """
+        cdef TypeID mtype
+        cdef hid_t space_id
+        space_id = 0
+
+        try:
+            space_id = H5Aget_space(self.id)
+            check_numpy_read(arr, space_id)
+            mtype = py_create(arr.dtype)
+
+            attr_rw_ff(self.id, mtype.id, PyArray_DATA(arr), 0, tr.id, esid_default(es))
 
         finally:
             if space_id:
@@ -429,9 +661,22 @@ cdef class AttrID(ObjectID):
         return H5Aget_storage_size(self.id)
 
 
+    def evict_ff(self, ctn_ver, PropID dxpl=None, EventStackID es=None):
+        """UINT ctn_ver, PropID dxpl=None, EventStackID es=None)
+
+        Evict attribute from the burst buffer, possibly asynchronously.
+
+        For Exascale FastForward.
+        """
+        H5Aevict_ff(self.id, <uint64_t>ctn_ver, pdefault(dxpl),
+                    esid_default(es))
 
 
+    def prefetch_ff(self, RCntxtID rc not None, hrpl_t replica_id,
+                    PropID dxpl=None, EventStackID es=None):
+        """(RCntxtID rc, UINT replica_id, PropID dxpl=None, EventStackID es=None)
 
-
-
-
+        For Exascale FastForward.
+        """
+        H5Aprefetch_ff(self.id, rc.id, &replica_id, pdefault(dxpl),
+                       esid_default(es))

@@ -276,11 +276,11 @@ class TestLen(BaseMapping):
         self.f.create_group('e')
         self.assertEqual(len(self.f), len(self.groups)+1)
 
-    def test_exc(self):
-        """ len() on closed group gives ValueError """
-        self.f.close()
-        with self.assertRaises(ValueError):
-            len(self.f)
+    #def test_exc(self):
+    #    """ len() on closed group gives ValueError """
+    #    self.f.close()
+    #    with self.assertRaises(ValueError):
+    #        len(self.f)
 
 class TestContains(BaseMapping):
 
@@ -293,10 +293,10 @@ class TestContains(BaseMapping):
         self.assertIn('a', self.f)
         self.assertNotIn('mongoose', self.f)
 
-    def test_exc(self):
-        """ "in" on closed group returns False (see also issue 174) """
-        self.f.close()
-        self.assertFalse('a' in self.f)
+    #def test_exc(self):
+    #    """ "in" on closed group returns False (see also issue 174) """
+    #    self.f.close()
+    #    self.assertFalse('a' in self.f)
 
 class TestIter(BaseMapping):
 

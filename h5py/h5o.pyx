@@ -9,7 +9,10 @@
 
 """
     Module for HDF5 "H5O" functions.
+    With Exascale FastForward additions.
 """
+
+include "config.pxi"
 
 # Pyrex compile-time imports
 from _objects cimport ObjectID, pdefault
@@ -18,11 +21,20 @@ from h5i cimport wrap_identifier
 from h5p cimport PropID
 from utils cimport emalloc, efree
 
+from h5py import _objects
+
+# For Exascale FastForward
+from h5rc cimport RCntxtID
+from h5tr cimport TransactionID
+from h5es cimport esid_default, EventStackID
+
 # === Public constants ========================================================
 
 TYPE_GROUP = H5O_TYPE_GROUP
 TYPE_DATASET = H5O_TYPE_DATASET
 TYPE_NAMED_DATATYPE = H5O_TYPE_NAMED_DATATYPE
+IF EFF:
+    TYPE_MAP = H5O_TYPE_MAP
 
 COPY_SHALLOW_HIERARCHY_FLAG = H5O_COPY_SHALLOW_HIERARCHY_FLAG
 COPY_EXPAND_SOFT_LINK_FLAG  = H5O_COPY_EXPAND_SOFT_LINK_FLAG
@@ -162,6 +174,90 @@ def get_info(ObjectID loc not None, char* name=NULL, int index=-1, *,
 
     return info
 
+
+# For Exascale FastForward
+IF EFF:
+    cdef class _ObjInfo_ff:
+
+        cdef H5O_ff_info_t *istr
+
+        property addr:
+            def __get__(self):
+                return self.istr[0].addr
+        property type:
+            def __get__(self):
+                return <int>self.istr[0].type
+        property rc:
+            def __get__(self):
+                return self.istr[0].rc
+        property num_attrs:
+            def __get__(self):
+                return <int>self.istr[0].num_attrs
+
+        def _hash(self):
+            return hash((self.addr, self.type, self.rc, self.num_attrs))
+
+
+    cdef class ObjInfo_ff(_ObjInfo_ff):
+
+        """
+            Represents the H5O_ff_info_t structure.
+            For Exascale FastForward.
+        """
+
+        cdef H5O_ff_info_t infostruct
+
+        def __init__(self):
+            self.istr = &self.infostruct
+
+        def __copy__(self):
+            cdef ObjInfo_ff newcopy
+            newcopy = ObjInfo_ff()
+            newcopy.infostruct = self.infostruct
+            return newcopy
+
+
+    def get_info_ff(ObjectID loc not None, RCntxtID rc not None,
+                    char* name=NULL, PropID lapl=None, EventStackID es=None):
+        """(ObjectID loc, RCntxtID rc, STRING name=NULL, PropID lapl=None, EventStackID es=None) => ObjInfo_ff
+
+        For Exascale FastForward.
+
+        Get information describing an object in an HDF5 file, possibly
+        asynchronously. Keywords:
+
+        PropID lapl (None)
+            Link access property list
+
+        EventStackID es (None)
+            Event stack identifier
+        """
+        cdef ObjInfo_ff info
+        info = ObjInfo_ff()
+
+        if name == NULL:
+            H5Oget_info_ff(loc.id, &info.infostruct, rc.id, esid_default(es))
+        else:
+            H5Oget_info_by_name_ff(loc.id, name, &info.infostruct,
+                                   pdefault(lapl), rc.id, esid_default(es))
+        return info
+
+
+    def get_info_by_name_ff(ObjectID loc not None, char* name,
+                            RCntxtID rc not None, PropID lapl=None,
+                            EventStackID es=None):
+        """(ObjectID loc, STRING name, RCntxtID rc, PropID lapl=None, EventStackID es=None) => ObjInfo_ff
+
+        Retrieve the metadata for an object specified by a location and a
+        pathname, possibly asynchronously. For Exascale FastForward.
+        """
+        cdef ObjInfo_ff info
+        info = ObjInfo_ff()
+
+        H5Oget_info_by_name_ff(loc.id, name, &info.infostruct, pdefault(lapl),
+                               rc.id, esid_default(es))
+        return info
+
 # === General object operations ===============================================
 
 
@@ -173,6 +269,32 @@ def open(ObjectID loc not None, char* name, PropID lapl=None):
     return wrap_identifier(H5Oopen(loc.id, name, pdefault(lapl)))
 
 
+IF EFF:
+    def open_ff(ObjectID loc not None, char* name, RCntxtID rc not None, PropID lapl=None):
+        """(ObjectID loc, STRING name, RCntxtID rc, PropID lapl=None) => ObjectID
+
+        For Exascale FastForward. (TODO: Check h5i.wrap_identifier() if is still
+        useable.)
+
+        Open a group, dataset, or named datatype attached to an existing group.
+        """
+        cdef hid_t objid
+        objid = H5Oopen_ff(loc.id, name, pdefault(lapl), rc.id)
+        return wrap_identifier(objid)
+
+    def _close_ff(ObjectID obj not None, EventStackID es=None):
+        """(EventStackID es=None)
+
+        For Exascale FastForward.
+
+        Close an object in an HDF5 file, possibly asynchronously.
+        """
+        with _objects.registry.lock:
+            H5Oclose_ff(obj.id, esid_default(es))
+            if not obj.valid:
+                del _objects.registry[obj.id]
+
+
 def link(ObjectID obj not None, GroupID loc not None, char* name,
     PropID lcpl=None, PropID lapl=None):
     """(ObjectID obj, GroupID loc, STRING name, PropID lcpl=None,
@@ -182,6 +304,37 @@ def link(ObjectID obj not None, GroupID loc not None, char* name,
     h5g.create_anon() or h5d.create_anon().
     """
     H5Olink(obj.id, loc.id, name, pdefault(lcpl), pdefault(lapl))
+
+
+IF EFF:
+    def link_ff(ObjectID obj not None, GroupID loc not None, char* name,
+                TransactionID tr not None, PropID lcpl=None, PropID lapl=None,
+                EventStackID es=None):
+        """(ObjectID obj, GroupID loc, STRING name, TransactionID tr, PropID lcpl=None,
+        PropID lapl=None, EventStackID es=None)
+
+        For Exascale FastForward.
+
+        Create a new hard link to an object, possibly asynchronously.  Useful for
+        objects created with h5g.create_anon() or h5d.create_anon().
+        """
+        H5Olink_ff(obj.id, loc.id, name, pdefault(lcpl), pdefault(lapl), tr.id,
+                   esid_default(es))
+
+    def exists_by_name_ff(GroupID loc not None, char* name, RCntxtID rc not None,
+                          PropID lapl=None, EventStackID es=None):
+        """(GroupID loc, STRING name, RCntxtID rc, PropID lapl=None,
+        EventStackID es=None) => BOOL
+
+        For Exascale FastForward.
+
+        Determine whether a link resolves to an actual object, possibly
+        asynchronously.
+        """
+        cdef hbool_t exists
+        H5Oexists_by_name_ff(loc.id, name, &exists, pdefault(lapl), rc.id,
+                             esid_default(es))
+        return <bint>exists
 
 
 def copy(ObjectID src_loc not None, char* src_name, GroupID dst_loc not None,
@@ -214,6 +367,28 @@ def set_comment(ObjectID loc not None, char* comment, *, char* obj_name=".",
     H5Oset_comment_by_name(loc.id, obj_name, comment, pdefault(lapl))
 
 
+IF EFF:
+    def set_comment_ff(ObjectID loc not None, char* comment, TransactionID tr,
+                       *, char* obj_name=".", PropID lapl=None, EventStackID es=None):
+        """(ObjectID loc, STRING comment, TransactionID tr, **kwds)
+
+        For Exascale FastForward.
+
+        Set the comment for any-file resident object, possibly asynchronously.
+        Keywords:
+
+        STRING obj_name (".")
+            Set comment on this group member instead
+
+        PropID lapl (None)
+            Link access property list
+
+        EventStackID es (None)
+            Event stack identifier
+        """
+        H5Oset_comment_by_name_ff(loc.id, obj_name, comment, pdefault(lapl),
+                                  tr.id, esid_default(es))
+
 
 def get_comment(ObjectID loc not None, char* comment, *, char* obj_name=".",
     PropID lapl=None):
@@ -239,6 +414,80 @@ def get_comment(ObjectID loc not None, char* comment, *, char* obj_name=".",
         efree(buf)
 
     return pstring
+
+
+IF EFF:
+    def get_comment_ff(ObjectID loc not None, char* comment, RCntxtID rc not None,
+                       *, char* obj_name=".", PropID lapl=None, EventStackID es=None):
+        """(ObjectID loc, STRING comment RCntxtID rc, **kwds)
+
+        For Exascale FastForward.
+
+        Get the comment for any-file resident object.  Keywords:
+
+        STRING obj_name (".")
+            Set comment on this group member instead
+
+        PropID lapl (None)
+            Link access property list
+
+        EventStackID es (None)
+            Event stack identifier
+        """
+        cdef ssize_t size
+        cdef char* buf
+
+        H5Oget_comment_by_name_ff(loc.id, obj_name, NULL, 0, &size, pdefault(lapl),
+                                  rc.id, esid_default(es))
+        buf = <char*>emalloc(size+1)
+        try:
+            H5Oget_comment_by_name_ff(loc.id, obj_name, buf, size+1, &size,
+                                      pdefault(lapl), rc.id, esid_default(es))
+            pstring = buf
+        finally:
+            efree(buf)
+
+        return pstring
+
+
+    def get_token(ObjectID obj not None):
+        """(ObjectID obj) => bytes
+
+        Retrieve the object token containing all the object metadata needed to
+        open the object from any rank in the application, even in the same
+        transaction that the object was created in.
+        """
+        cdef size_t token_size
+        cdef uint8_t *token = NULL
+        cdef bytes py_bytes
+
+        try:
+            # Get token buffer size...
+            H5Oget_token(obj.id, NULL, &token_size)
+            assert token_size > 0
+
+            # Get token buffer...
+            token = <uint8_t*>emalloc(sizeof(uint8_t)*token_size)
+            H5Oget_token(obj.id, token, &token_size)
+
+            # Slice token to token_size number of bytes to include any null
+            # bytes...
+            py_bytes = token[:token_size]
+
+            return py_bytes
+
+        finally:
+            efree(token)
+
+
+    def open_by_token(bytes py_token not None, TransactionID tr not None,
+                      EventStackID es=None):
+        """Open the existing HDF5 object described by the token buffer token.
+        """
+        cdef uint8_t *token = NULL
+        token = py_token
+        return wrap_identifier(H5Oopen_by_token(token, tr.id, esid_default(es)))
+
 
 # === Visit routines ==========================================================
 
@@ -334,11 +583,3 @@ def visit(ObjectID loc not None, object func, *,
         <H5_iter_order_t>order, cfunc, <void*>visit, pdefault(lapl))
 
     return visit.retval
-
-
-
-
-
-
-
-

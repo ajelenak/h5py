@@ -18,6 +18,7 @@ cdef extern from "hdf5.h":
   ctypedef long long hsize_t
   ctypedef signed long long hssize_t
   ctypedef signed long long haddr_t
+  ctypedef uint64_t hrpl_t
 
   ctypedef struct hvl_t:
     size_t len                 # Length of VL data (in base type units)
@@ -209,14 +210,24 @@ cdef extern from "hdf5.h":
     H5I_BADID        = -1,  # invalid Group
     H5I_FILE        = 1,    # group ID for File objects
     H5I_GROUP,              # group ID for Group objects
+    H5I_MAP,                # group ID for Map objects
     H5I_DATATYPE,           # group ID for Datatype objects
     H5I_DATASPACE,          # group ID for Dataspace objects
     H5I_DATASET,            # group ID for Dataset objects
     H5I_ATTR,               # group ID for Attribute objects
     H5I_REFERENCE,          # group ID for Reference objects
     H5I_VFL,                # group ID for virtual file layer
+    H5I_VOL,                # group ID for virtual object layer
+    H5I_ES,                 # group ID for Event Queue objects
+    H5I_RC,                 # group ID for Read Context objects
+    H5I_TR,                 # group ID for Transaction objects
+    H5I_QUERY,              # group ID for Query objects
+    H5I_VIEW,               # group ID for view objects
     H5I_GENPROP_CLS,        # group ID for generic property list classes
     H5I_GENPROP_LST,        # group ID for generic property lists
+    H5I_ERROR_CLASS,        # group ID for error classes
+    H5I_ERROR_MSG,          # group ID for error messages
+    H5I_ERROR_STACK,        # group ID for error stacks
     H5I_NGROUPS             # number of valid groups, MUST BE LAST!
 
 # === H5L/H5O - Links interface (1.8.X only) ======================================
@@ -267,6 +278,7 @@ cdef extern from "hdf5.h":
     H5O_TYPE_GROUP,             # Object is a group
     H5O_TYPE_DATASET,           # Object is a dataset
     H5O_TYPE_NAMED_DATATYPE,    # Object is a named data type
+    H5O_TYPE_MAP,               # Object is a map
     H5O_TYPE_NTYPES             # Number of different object types (must be last!)
 
   unsigned int H5O_COPY_SHALLOW_HIERARCHY_FLAG    # (0x0001u) Copy only immediate members
@@ -398,6 +410,21 @@ cdef extern from "hdf5.h":
   hid_t H5P_GROUP_CREATE
   hid_t H5P_CRT_ORDER_TRACKED
   hid_t H5P_CRT_ORDER_INDEXED
+
+  # Additional property list classes from Exascale FastForward's H5Ppublic.h
+  hid_t H5P_ROOT
+  hid_t H5P_FILE_MOUNT
+  hid_t H5P_GROUP_ACCESS
+  hid_t H5P_MAP_CREATE
+  hid_t H5P_MAP_ACCESS
+  hid_t H5P_DATATYPE_CREATE
+  hid_t H5P_DATATYPE_ACCESS
+  hid_t H5P_STRING_CREATE
+  hid_t H5P_ATTRIBUTE_CREATE
+  hid_t H5P_RC_ACQUIRE
+  hid_t H5P_TR_START
+  hid_t H5P_TR_FINISH
+  hid_t H5P_VIEW_CREATE
 
 # === H5R - Reference API =====================================================
 
@@ -752,3 +779,117 @@ cdef extern from "hdf5_hl.h":
 # === H5DS - Dimension Scales API =============================================
 
   ctypedef herr_t  (*H5DS_iterate_t)(hid_t dset, unsigned dim, hid_t scale, void *visitor_data) except 2
+
+
+
+#=========================================================================
+# Exascale FastForward
+#=========================================================================
+
+# === H5ES - Event Stack API =============================================
+
+cdef extern from "H5ESpublic.h":
+   # Asynchronous operation status
+   ctypedef enum H5ES_status_t:
+      H5ES_STATUS_IN_PROGRESS,   # Operation has not yet completed
+      H5ES_STATUS_SUCCEED,       # Operation has completed, successfully
+      H5ES_STATUS_FAIL,          # Operation has completed, but failed
+      H5ES_STATUS_CANCEL         # Operation has not completed and has been cancelled
+
+   int H5_REQUEST_NULL     # NULL
+   int H5_EVENT_STACK_NULL # -1
+
+# === H5TR API ===========================================================
+
+cdef extern from "H5TRpublic.h":
+    cdef char* H5TR_START_NUM_PEERS_NAME
+
+# === H5RC API ===========================================================
+
+cdef extern from "H5RCpublic.h":
+    ctypedef enum H5RC_request_t:
+        H5RC_EXACT, # Acquire a read handle for the exact container version specified (Default)
+        H5RC_PREV,  # Acquire a read handle for the container version specified, or the highest
+                    # previous version if the specified version is not available
+        H5RC_NEXT,  # Acquire a read handle for the container version specified, or the lowest
+                    # next version if the specified version is not available
+        H5RC_LAST   # Acquire a read handle for the last (highest) container version possible
+
+    cdef char* H5RC_ACQUIRE_CV_REQUEST_NAME
+
+# === H5O API ============================================================
+
+cdef extern from "H5FFpublic.h":
+
+    ctypedef uint64_t haddr_ff_t
+
+    ctypedef struct H5O_ff_info_t:
+        haddr_ff_t          addr       # Object address in file
+        H5O_type_t          type       # Basic object type
+        unsigned            rc         # Reference count of object
+        hsize_t             num_attrs  # num of attributes attached to object
+
+    cdef union _ff_u:
+        haddr_ff_t address
+        size_t val_size
+
+    ctypedef struct H5L_ff_info_t:
+        H5L_type_t type
+        H5T_cset_t cset
+        _ff_u u
+
+# === H5M API ============================================================
+
+cdef extern from "H5Mpublic.h":
+    ctypedef herr_t (*H5M_iterate_func_t)(const void *key, const void *value, void *context) except 2
+
+# === H5X API ============================================================
+
+cdef extern from "H5Xpublic.h":
+
+    int H5X_CLASS_T_VERS
+
+    # Plugin IDs
+    int H5X_PLUGIN_ERROR
+    int H5X_PLUGIN_ERROR     # (-1) no plugin
+    int H5X_PLUGIN_NONE      # 0  reserved indefinitely
+    int H5X_PLUGIN_DUMMY     # 1  dummy
+    int H5X_PLUGIN_FASTBIT   # 2  fastbit
+    int H5X_PLUGIN_ALACRITY  # 3  alacrity
+    int H5X_PLUGIN_RESERVED  # 64 plugin ids below this value reserved
+    int H5X_PLUGIN_MAX       # 256  maximum plugin id
+
+    # Maximum number of plugins allowed in a pipeline
+    int H5X_MAX_NPLUGINS    # 16
+    
+    # Index type
+    ctypedef enum H5X_type_t:
+        H5X_TYPE_LINK_NAME,   # Link name index
+        H5X_TYPE_ATTR_NAME,   # Attribute name index
+        H5X_TYPE_DATA_ELEM,   # Dataset element index
+        H5X_TYPE_MAP_VALUE    # Map value index
+
+# === H5Q API ============================================================
+
+cdef extern from "H5Qpublic.h":
+
+    # Query type
+    ctypedef enum H5Q_type_t:
+        H5Q_TYPE_DATA_ELEM,  # selects data elements
+        H5Q_TYPE_ATTR_VALUE, # selects attribute values
+        H5Q_TYPE_ATTR_NAME,  # selects attributes
+        H5Q_TYPE_LINK_NAME   # selects objects
+        H5Q_TYPE_MISC        # (for combine queries) selects misc objects
+
+    # Query match conditions
+    ctypedef enum H5Q_match_op_t:
+        H5Q_MATCH_EQUAL,        # equal
+        H5Q_MATCH_NOT_EQUAL,    # not equal
+        H5Q_MATCH_LESS_THAN,    # less than
+        H5Q_MATCH_GREATER_THAN  # greater than
+
+    # Query combine operators
+    ctypedef enum H5Q_combine_op_t:
+        H5Q_COMBINE_AND,
+        H5Q_COMBINE_OR,
+        H5Q_SINGLETON

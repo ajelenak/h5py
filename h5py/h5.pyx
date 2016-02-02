@@ -121,6 +121,15 @@ cdef class H5PYConfig:
             ELSE:
                 return False
 
+    property eff:
+        """ Boolean indicating if the module was built with Exascale
+        FastForward HDF5 library """
+        def __get__(self):
+            IF EFF:
+                return True
+            ELSE:
+                return False
+
 cdef H5PYConfig cfg = H5PYConfig()
 
 cpdef H5PYConfig get_config():

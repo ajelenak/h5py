@@ -6,13 +6,13 @@ h5py/_objects.c
 h5py/_errors.c
 h5py/config.pxi
 h5py/_hdf5.*
+h5py/eff_control.c
 *.hdf5
 *.pickle
+*.sw?
 h5py/defs.*
 build/
 *.pyc
 dist/
 MANIFEST
-.DS_Store
-/docs/_build
-/docs_api/_build
+port.cfg

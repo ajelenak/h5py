@@ -13,7 +13,10 @@ import os
 
 from .base import HLObject, py3
 from .group import Group
-from h5py import h5, h5f, h5p, h5i, h5fd, h5t, _objects
+from .read_context import make_rcapl, ReadContext
+from .transaction import Transaction
+from .event_stack import es_null
+from h5py import h5, h5f, h5p, h5i, h5fd, h5t, h5rc, h5tr, _objects
 from h5py import version
 
 mpi = h5.get_config().mpi
@@ -53,15 +56,24 @@ def make_fapl(driver, libver, **kwds):
     elif(driver == 'mpio'):
         kwds.setdefault('info', mpi4py.MPI.Info())
         plist.set_fapl_mpio(**kwds)
+    elif(driver == 'iod'): # for FastFortward
+        kwds.setdefault('info', mpi4py.MPI.Info())
+        plist.set_fapl_iod(**kwds)
     else:
         raise ValueError('Unknown driver type "%s"' % driver)
 
     return plist
 
 
-def make_fid(name, mode, userblock_size, fapl, fcpl=None):
+def make_fid(name, mode, userblock_size, fapl, es=es_null, fcpl=None,
+             with_rc=False):
     """ Get a new FileID by opening or creating a file.
-    Also validates mode argument."""
+    Also validates mode argument.
+    
+    This is the Exascale FastForward version with one extra argument: es is for
+    the EventStack object. The with_rc flag indicates whether to acquire a read
+    context when opening a file. Its default value is False.
+    """
 
     if userblock_size is not None:
         if mode in ('r', 'r+'):
@@ -75,31 +87,46 @@ def make_fid(name, mode, userblock_size, fapl, fcpl=None):
             fcpl = h5p.create(h5p.FILE_CREATE)
         fcpl.set_userblock(userblock_size)
 
+    # Holds the read context identifier from the open() operation if
+    # requested.
+    rcid = None
+
     if mode == 'r':
-        fid = h5f.open(name, h5f.ACC_RDONLY, fapl=fapl)
+        (fid, rcid) = h5f.open(name, h5f.ACC_RDONLY, fapl=fapl, rc=with_rc,
+                               es=es.id)
     elif mode == 'r+':
-        fid = h5f.open(name, h5f.ACC_RDWR, fapl=fapl)
+        (fid, rcid) = h5f.open(name, h5f.ACC_RDWR, fapl=fapl, rc=with_rc,
+                               es=es.id)
     elif mode == 'w-':
-        fid = h5f.create(name, h5f.ACC_EXCL, fapl=fapl, fcpl=fcpl)
+        with_rc = False # This flag is meaningless for create()
+        fid = h5f.create(name, h5f.ACC_EXCL, fapl=fapl, fcpl=fcpl, es=es.id)
     elif mode == 'w':
-        fid = h5f.create(name, h5f.ACC_TRUNC, fapl=fapl, fcpl=fcpl)
+        with_rc = False # This flag is meaningless for create()
+        fid = h5f.create(name, h5f.ACC_TRUNC, fapl=fapl, fcpl=fcpl, es=es.id)
     elif mode == 'a' or mode is None:
         try:
-            fid = h5f.open(name, h5f.ACC_RDWR, fapl=fapl)
+            (fid, rcid) = h5f.open(name, h5f.ACC_RDWR, fapl=fapl, rc=with_rc,
+                                   es=es.id)
             try:
                 existing_fcpl = fid.get_create_plist()
                 if (userblock_size is not None and
                         existing_fcpl.get_userblock() != userblock_size):
-                    raise ValueError("Requested userblock size (%d) does not match that of existing file (%d)" % (userblock_size, existing_fcpl.get_userblock()))
+                    raise ValueError("Requested userblock size (%d) does not match that of existing file (%d)"
+                                     % (userblock_size, existing_fcpl.get_userblock()))
             except:
                 fid.close()
                 raise
         except IOError:
-            fid = h5f.create(name, h5f.ACC_EXCL, fapl=fapl, fcpl=fcpl)
+            with_rc = False # This flag is meaningless for create()
+            fid = h5f.create(name, h5f.ACC_EXCL, fapl=fapl, fcpl=fcpl, es=es.id)
     else:
         raise ValueError("Invalid mode; must be one of r, r+, w, w-, a")
 
-    return fid
+    # Sanity check: did we get a read context identifier if requested
+    if with_rc and rcid is None:
+        raise ValueError("Read context identifier from open() requested but not given")
+
+    return (fid, rcid)
 
 
 class File(Group):
@@ -114,7 +141,8 @@ class File(Group):
         # hdf5 complains that a file identifier is an invalid location for an
         # attribute. Instead of self, pass the root group to AttributeManager:
         import attrs
-        return attrs.AttributeManager(self['/'])
+        # return attrs.AttributeManager(self['/'])
+        return attrs.AttributeManager(self)
 
     @property
     def filename(self):
@@ -130,8 +158,7 @@ class File(Group):
         """Low-level HDF5 file driver used to open file"""
         drivers = {h5fd.SEC2: 'sec2', h5fd.STDIO: 'stdio',
                    h5fd.CORE: 'core', h5fd.FAMILY: 'family',
-                   h5fd.WINDOWS: 'windows', h5fd.MPIO: 'mpio',
-                   h5fd.MPIPOSIX: 'mpiposix'}
+                   h5fd.WINDOWS: 'windows', h5fd.MPIO: 'mpio'}
         return drivers.get(self.fid.get_access_plist().get_driver(), 'unknown')
 
     @property
@@ -157,7 +184,6 @@ class File(Group):
         fcpl = self.fid.get_create_plist()
         return fcpl.get_userblock()
 
-
     if mpi and hdf5_version >= (1, 8, 9):
 
         @property
@@ -171,8 +197,8 @@ class File(Group):
             self.id.set_mpi_atomicity(value)
 
 
-    def __init__(self, name, mode=None, driver=None, 
-                 libver=None, userblock_size=None, **kwds):
+    def __init__(self, name, mode=None, driver=None, libver=None,
+                 userblock_size=None, with_rc=False, es=es_null, **kwds):
         """Create a new file object.
 
         See the h5py user guide for a detailed explanation of the options.
@@ -180,15 +206,20 @@ class File(Group):
         name
             Name of the file on disk.  Note: for files created with the 'core'
             driver, HDF5 still requires this be non-empty.
+        es
+            Exascale FastForward event stack object (EventStack).
         driver
             Name of the driver to use.  Legal values are None (default,
-            recommended), 'core', 'sec2', 'stdio', 'mpio'.
+            recommended), 'core', 'sec2', 'stdio', 'mpio', 'iod'.
         libver
             Library version bounds.  Currently only the strings 'earliest'
             and 'latest' are defined.
         userblock
             Desired size of user block.  Only allowed when creating a new
             file (mode w or w-).
+        with_rc
+            A flag requesting a read context handle at the same time when
+            opening a file. Default False.
         Additional keywords
             Passed on to the selected file driver.
         """
@@ -204,28 +235,97 @@ class File(Group):
                 pass
 
             fapl = make_fapl(driver, libver, **kwds)
-            fid = make_fid(name, mode, userblock_size, fapl)
+
+            (fid, rcid) = make_fid(name, mode, userblock_size, fapl, es,
+                                   with_rc=with_rc)
 
         Group.__init__(self, fid)
+        self._rc = ReadContext(rcid) if rcid is not None else None
+        self._tr = None
+        self._es = es
 
-    def close(self):
-        """ Close the file.  All open objects become invalid """
+
+    def close(self, persist=True):
+        """ Close the file.  All open objects become invalid.
+
+        Optional arguments:
+        
+        persist
+            Flag to indicate whether to persist the final transaction. Default
+            is True.
+        """
         # TODO: find a way to square this with having issue 140
         # Not clearing shared state introduces a tiny memory leak, but
         # it goes like the number of files opened in a session.
-        self.id.close()
+        self.id.close(persist=persist, es=self.es.id)
+
 
     def flush(self):
         """ Tell the HDF5 library to flush its buffers.
         """
         h5f.flush(self.fid)
 
+
+    def create_context(self, version):
+        """ Create a read context on the container at requested version.
+        """
+        self.rc = ReadContext(h5rc.create(self.id, version), container=self)
+
+
+    def acquire_context(self, version=0, req="exact"):
+        """Acquire a read handle for the container at a given version and
+        create a read context associated with the container and version.
+        Returns the acquired container version.
+
+        Arguments:
+
+        version
+            Requested container version. Default is 0.
+
+        req
+            Container version request modifier. Possible values: "exact"
+            (default), "prev", "next", and "last".
+        """
+        rcapl = make_rcapl(req)
+        (rcid, ver) = h5rc.acquire(self.id, version, rcapl=rcapl, es=self.es.id)
+        self._rc = ReadContext(rcid, container=self)
+        return ver
+
+
+    def persist(self):
+        """Copy data for the container from IOD to DAOS up to specified
+        container version.
+        """
+        self.rc.id.persist(es=self.es.id)
+
+
+    def make_snapshot(self, name):
+        """Make a named snapshot of the container on DAOS."""
+        self.rc.id.snapshot(name, es=self.es.id)
+
+
+    def create_transaction(self, transaction_number):
+        """Create a transaction associated with the container, read
+        context, and transaction number.
+        """
+        self.tr = Transaction(self, self.rc, transaction_number)
+
+
+    def skip_transaction(self, start_trans_number, skip=1):
+        """Explicitly skip one or more transactions for the container. The
+        default skip count is 1. EventStackID object is an optional argument.
+        """
+        h5tr.skip(self.id, start_trans_num, count=skip, es=self.es.id) 
+
+
     def __enter__(self):
         return self
+
 
     def __exit__(self, *args):
         if self.id:
             self.close()
+
 
     def __repr__(self):
         if not self.id:

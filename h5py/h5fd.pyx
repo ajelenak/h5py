@@ -14,6 +14,8 @@
     File driver constants (H5FD*).
 """
 
+include "config.pxi"
+
 # === Multi-file driver =======================================================
 
 MEM_DEFAULT = H5FD_MEM_DEFAULT
@@ -31,7 +33,6 @@ CORE = H5FD_CORE
 FAMILY = H5FD_FAMILY
 LOG = H5FD_LOG
 MPIO = H5FD_MPIO
-MPIPOSIX = H5FD_MPIPOSIX
 MULTI = H5FD_MULTI
 SEC2 = H5FD_SEC2
 STDIO = H5FD_STDIO
