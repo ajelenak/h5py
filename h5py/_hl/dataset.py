@@ -227,7 +227,7 @@ class Dataset(Index, HLObject):
     """
         Represents an HDF5 dataset
     """
-        
+
     def astype(self, dtype):
         """ Get a context manager allowing you to perform reads to a
         different destination type, e.g.:
@@ -237,10 +237,10 @@ class Dataset(Index, HLObject):
         """
         return AstypeContext(self, dtype)
 
-    @property
-    def dims(self):
-        from . dims import DimensionManager
-        return DimensionManager(self)
+    # @property
+    # def dims(self):
+    #     from . dims import DimensionManager
+    #     return DimensionManager(self)
 
     @property
     def shape(self):
@@ -341,7 +341,7 @@ class Dataset(Index, HLObject):
 
     def close(self):
         """Close the dataset.
-        
+
         For Exascale FastForward.
         """
         self.id._close_ff(es=self.es.id)
@@ -476,7 +476,7 @@ class Dataset(Index, HLObject):
 
         # === Special-case region references ====
 
-        if len(args) == 1 and isinstance(args[0], h5r.RegionReference):
+        if len(args) == 1 and isinstance(args[0], h5r.DsetRegionReference):
 
             obj = h5r.dereference(args[0], self.id)
             if obj != self.id:
@@ -500,7 +500,7 @@ class Dataset(Index, HLObject):
             # These are the only access methods NumPy allows for such objects
             if args == (Ellipsis,) or args == tuple():
                 return numpy.empty(self.shape, dtype=new_dtype)
-            
+
         # === Scalar dataspaces =================
 
         if self.shape == ():
@@ -624,7 +624,7 @@ class Dataset(Index, HLObject):
             if len(mismatch) != 0:
                 mismatch = ", ".join('"%s"'%x for x in mismatch)
                 raise ValueError("Illegal slicing argument (fields %s not in dataset type)" % mismatch)
-        
+
             # Write non-compound source into a single dataset field
             if len(names) == 1 and val.dtype.fields is None:
                 subtype = h5y.py_create(val.dtype)

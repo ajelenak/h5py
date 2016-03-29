@@ -13,7 +13,10 @@ _errors.silence_errors()
 from h5py import _conv
 _conv.register_converters()
 
-from h5py import h5a, h5d, h5ds, h5f, h5fd, h5g, h5r, h5s, h5t, h5p, h5z
+from h5py import h5a, h5d, h5f, h5fd, h5g, h5r, h5s, h5t, h5p, h5z#, h5ds
+
+# Exascale FastForward
+from h5py import h5es, h5rc, h5tr, h5m, h5q, h5v#,h5x
 
 # Exascale FastForward
 from h5py import h5es, h5rc, h5tr, h5m, h5q, h5v#,h5x
@@ -24,7 +27,8 @@ h5z._register_lzf()
 from h5py.highlevel import *
 
 from h5py.h5 import get_config
-from h5py.h5r import Reference, RegionReference
+from h5py.h5r import (Reference, RegionReference, AttributeReference,
+                      ExtReference, ExtRegionReference, ExtAttributeReference)
 from h5py.h5t import special_dtype, check_dtype
 
 # Deprecated functions

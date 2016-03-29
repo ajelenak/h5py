@@ -13,7 +13,8 @@
     Low-level type-conversion routines.
 """
 
-from h5r cimport Reference, RegionReference, hobj_ref_t, hdset_reg_ref_t
+from h5r cimport (Reference, RegionReference, ExtReference, ExtRegionReference,
+                  AttributeReference, ExtAttributeReference)
 from h5t cimport H5PY_OBJ, typewrap, py_create, TypeID
 cimport numpy as np
 from libc.stdlib cimport realloc
@@ -23,7 +24,7 @@ np.import_array()
 
 # Minimal interface for Python objects immune to Cython refcounting
 cdef extern from "Python.h":
-    
+
     # From Cython declarations
     ctypedef int PyTypeObject
     ctypedef struct PyObject:
@@ -87,7 +88,7 @@ cdef herr_t generic_converter(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
         return initop(src_id, dst_id, &(cdata[0].priv))
 
     elif command == H5T_CONV_FREE:
-        
+
         free(cdata[0].priv)
         cdata[0].priv = NULL
 
@@ -135,7 +136,7 @@ cdef herr_t generic_converter(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
     return 0
 
 # =============================================================================
-# Generic conversion 
+# Generic conversion
 
 ctypedef struct conv_size_t:
     size_t src_size
@@ -143,7 +144,7 @@ ctypedef struct conv_size_t:
     int cset
 
 cdef herr_t init_generic(hid_t src, hid_t dst, void** priv) except -1:
-    
+
     cdef conv_size_t *sizes
     sizes = <conv_size_t*>malloc(sizeof(conv_size_t))
     priv[0] = sizes
@@ -244,7 +245,7 @@ cdef int conv_str2vlen(void* ipt, void* opt, void* bkg, void* priv) except -1:
                     temp_string_len = PyBytes_Size(temp_encoded)
                 else:
                     raise TypeError("Unrecognized dataset encoding")
-                    
+
         if strlen(temp_string) != temp_string_len:
             raise ValueError("VLEN strings do not support embedded NULLs")
 
@@ -332,12 +333,12 @@ cdef int conv_fixed2vlen(void* ipt, void* opt, void* bkg, void* priv) except -1:
 cdef int conv_objref2pyref(void* ipt, void* opt, void* bkg, void* priv) except -1:
 
     cdef PyObject** buf_obj = <PyObject**>opt
-    cdef hobj_ref_t* buf_ref = <hobj_ref_t*>ipt
+    cdef href_t* buf_ref = <href_t*>ipt
 
     cdef Reference ref = Reference()
     cdef PyObject* ref_ptr = NULL
 
-    ref.ref.obj_ref = buf_ref[0]
+    ref.ref = buf_ref[0]
     ref.typecode = H5R_OBJECT
 
     ref_ptr = <PyObject*>ref
@@ -348,10 +349,11 @@ cdef int conv_objref2pyref(void* ipt, void* opt, void* bkg, void* priv) except -
 
     return 0
 
+
 cdef int conv_pyref2objref(void* ipt, void* opt, void* bkg, void* priv) except -1:
 
     cdef PyObject** buf_obj = <PyObject**>ipt
-    cdef hobj_ref_t* buf_ref = <hobj_ref_t*>opt
+    cdef href_t* buf_ref = <href_t*>opt
 
     cdef object obj
     cdef Reference ref
@@ -361,24 +363,107 @@ cdef int conv_pyref2objref(void* ipt, void* opt, void* bkg, void* priv) except -
         if not isinstance(obj, Reference):
             raise TypeError("Can't convert incompatible object to HDF5 object reference")
         ref = <Reference>(buf_obj[0])
-        buf_ref[0] = ref.ref.obj_ref
+        buf_ref[0] = ref.ref
     else:
-        memset(buf_ref, c'\0', sizeof(hobj_ref_t))
+        memset(buf_ref, c'\0', sizeof(href_t))
 
     return 0
+
+
+cdef int conv_extobjref2pyref(void* ipt, void* opt, void* bkg, void* priv) except -1:
+
+    cdef PyObject** buf_obj = <PyObject**>opt
+    cdef href_t* buf_ref = <href_t*>ipt
+
+    cdef ExtReference ref = ExtReference()
+    cdef PyObject* ref_ptr = NULL
+
+    ref.ref = buf_ref[0]
+    ref.typecode = H5R_EXT_OBJECT
+
+    ref_ptr = <PyObject*>ref
+    Py_INCREF(ref_ptr)  # because Cython discards its reference when the
+                        # function exits
+
+    buf_obj[0] = ref_ptr
+
+    return 0
+
+
+cdef int conv_pyref2extobjref(void* ipt, void* opt, void* bkg, void* priv) except -1:
+
+    cdef PyObject** buf_obj = <PyObject**>ipt
+    cdef href_t* buf_ref = <href_t*>opt
+
+    cdef object obj
+    cdef ExtReference ref
+
+    if buf_obj[0] != NULL and buf_obj[0] != Py_None:
+        obj = <object>(buf_obj[0])
+        if not isinstance(obj, ExtReference):
+            raise TypeError("Can't convert incompatible object to HDF5 external object reference")
+        ref = <ExtReference>(buf_obj[0])
+        buf_ref[0] = ref.ref
+    else:
+        memset(buf_ref, c'\0', sizeof(href_t))
+
+    return 0
+
+
+# cdef int conv_dset_regref2pyref(void* ipt, void* opt, void* bkg, void* priv) except -1:
+
+#     cdef PyObject** buf_obj = <PyObject**>opt
+#     cdef PyObject** bkg_obj = <PyObject**>bkg
+#     cdef href_t* buf_ref = <href_t*>ipt
+
+#     cdef DsetRegionReference ref = DsetRegionReference()
+#     cdef PyObject* ref_ptr = NULL
+
+#     memcpy(&ref.ref, buf_ref, sizeof(href_t))
+
+#     ref.typecode = H5R_DATASET_REGION
+
+#     ref_ptr = <PyObject*>ref
+#     Py_INCREF(ref_ptr)  # because Cython discards its reference when the
+#                         # function exits
+
+#     Py_XDECREF(bkg_obj[0])
+#     buf_obj[0] = ref_ptr
+
+#     return 0
+
+# cdef int conv_pyref2dset_regref(void* ipt, void* opt, void* bkg, void* priv) except -1:
+
+#     cdef PyObject** buf_obj = <PyObject**>ipt
+#     cdef href_t* buf_ref = <href_t*>opt
+
+#     cdef object obj
+#     cdef DsetRegionReference ref
+
+#     if buf_obj[0] != NULL and buf_obj[0] != Py_None:
+#         obj = <object>(buf_obj[0])
+#         if not isinstance(obj, DsetRegionReference):
+#             raise TypeError("Can't convert incompatible object to HDF5 region reference")
+#         ref = <DsetRegionReference>(buf_obj[0])
+#         memcpy(buf_ref, &ref.ref, sizeof(href_t))
+#     else:
+#         memset(buf_ref, c'\0', sizeof(href_t))
+
+#     return 0
 
 cdef int conv_regref2pyref(void* ipt, void* opt, void* bkg, void* priv) except -1:
 
     cdef PyObject** buf_obj = <PyObject**>opt
     cdef PyObject** bkg_obj = <PyObject**>bkg
-    cdef hdset_reg_ref_t* buf_ref = <hdset_reg_ref_t*>ipt
+    cdef href_t* buf_ref = <href_t*>ipt
 
     cdef RegionReference ref = RegionReference()
     cdef PyObject* ref_ptr = NULL
 
-    memcpy(ref.ref.reg_ref, buf_ref, sizeof(hdset_reg_ref_t))
+    memcpy(&ref.ref, buf_ref, sizeof(href_t))
 
-    ref.typecode = H5R_DATASET_REGION
+    ref.ref = buf_ref[0]
+    ref.typecode = H5R_REGION
 
     ref_ptr = <PyObject*>ref
     Py_INCREF(ref_ptr)  # because Cython discards its reference when the
@@ -392,7 +477,7 @@ cdef int conv_regref2pyref(void* ipt, void* opt, void* bkg, void* priv) except -
 cdef int conv_pyref2regref(void* ipt, void* opt, void* bkg, void* priv) except -1:
 
     cdef PyObject** buf_obj = <PyObject**>ipt
-    cdef hdset_reg_ref_t* buf_ref = <hdset_reg_ref_t*>opt
+    cdef href_t* buf_ref = <href_t*>opt
 
     cdef object obj
     cdef RegionReference ref
@@ -402,11 +487,144 @@ cdef int conv_pyref2regref(void* ipt, void* opt, void* bkg, void* priv) except -
         if not isinstance(obj, RegionReference):
             raise TypeError("Can't convert incompatible object to HDF5 region reference")
         ref = <RegionReference>(buf_obj[0])
-        memcpy(buf_ref, ref.ref.reg_ref, sizeof(hdset_reg_ref_t))
+        memcpy(buf_ref, &ref.ref, sizeof(href_t))
     else:
-        memset(buf_ref, c'\0', sizeof(hdset_reg_ref_t))
+        memset(buf_ref, c'\0', sizeof(href_t))
 
     return 0
+
+
+cdef int conv_extregref2pyref(void* ipt, void* opt, void* bkg, void* priv) except -1:
+
+    cdef PyObject** buf_obj = <PyObject**>opt
+    cdef PyObject** bkg_obj = <PyObject**>bkg
+    cdef href_t* buf_ref = <href_t*>ipt
+
+    cdef ExtRegionReference ref = ExtRegionReference()
+    cdef PyObject* ref_ptr = NULL
+
+    memcpy(&ref.ref, buf_ref, sizeof(href_t))
+
+    ref.ref = buf_ref[0]
+    ref.typecode = H5R_EXT_REGION
+
+    ref_ptr = <PyObject*>ref
+    Py_INCREF(ref_ptr)  # because Cython discards its reference when the
+                        # function exits
+
+    Py_XDECREF(bkg_obj[0])
+    buf_obj[0] = ref_ptr
+
+    return 0
+
+
+cdef int conv_pyref2extregref(void* ipt, void* opt, void* bkg, void* priv) except -1:
+
+    cdef PyObject** buf_obj = <PyObject**>ipt
+    cdef href_t* buf_ref = <href_t*>opt
+
+    cdef object obj
+    cdef ExtRegionReference ref
+
+    if buf_obj[0] != NULL and buf_obj[0] != Py_None:
+        obj = <object>(buf_obj[0])
+        if not isinstance(obj, ExtRegionReference):
+            raise TypeError("Can't convert incompatible object to HDF5 external region reference")
+        ref = <ExtRegionReference>(buf_obj[0])
+        memcpy(buf_ref, &ref.ref, sizeof(href_t))
+    else:
+        memset(buf_ref, c'\0', sizeof(href_t))
+
+    return 0
+
+
+cdef int conv_attrref2pyref(void* ipt, void* opt, void* bkg, void* priv) except -1:
+
+    cdef PyObject** buf_obj = <PyObject**>opt
+    cdef PyObject** bkg_obj = <PyObject**>bkg
+    cdef href_t* buf_ref = <href_t*>ipt
+
+    cdef AttributeReference ref = AttributeReference()
+    cdef PyObject* ref_ptr = NULL
+
+    memcpy(&ref.ref, buf_ref, sizeof(href_t))
+
+    ref.ref = buf_ref[0]
+    ref.typecode = H5R_ATTR
+
+    ref_ptr = <PyObject*>ref
+    Py_INCREF(ref_ptr)  # because Cython discards its reference when the
+                        # function exits
+
+    Py_XDECREF(bkg_obj[0])
+    buf_obj[0] = ref_ptr
+
+    return 0
+
+
+cdef int conv_pyref2attrref(void* ipt, void* opt, void* bkg, void* priv) except -1:
+
+    cdef PyObject** buf_obj = <PyObject**>ipt
+    cdef href_t* buf_ref = <href_t*>opt
+
+    cdef object obj
+    cdef AttributeReference ref
+
+    if buf_obj[0] != NULL and buf_obj[0] != Py_None:
+        obj = <object>(buf_obj[0])
+        if not isinstance(obj, AttributeReference):
+            raise TypeError("Can't convert incompatible object to HDF5 attribute reference")
+        ref = <AttributeReference>(buf_obj[0])
+        memcpy(buf_ref, &ref.ref, sizeof(href_t))
+    else:
+        memset(buf_ref, c'\0', sizeof(href_t))
+
+    return 0
+
+
+cdef int conv_extattrref2pyref(void* ipt, void* opt, void* bkg, void* priv) except -1:
+
+    cdef PyObject** buf_obj = <PyObject**>opt
+    cdef PyObject** bkg_obj = <PyObject**>bkg
+    cdef href_t* buf_ref = <href_t*>ipt
+
+    cdef ExtAttributeReference ref = ExtAttributeReference()
+    cdef PyObject* ref_ptr = NULL
+
+    memcpy(&ref.ref, buf_ref, sizeof(href_t))
+
+    ref.ref = buf_ref[0]
+    ref.typecode = H5R_EXT_ATTR
+
+    ref_ptr = <PyObject*>ref
+    Py_INCREF(ref_ptr)  # because Cython discards its reference when the
+                        # function exits
+
+    Py_XDECREF(bkg_obj[0])
+    buf_obj[0] = ref_ptr
+
+    return 0
+
+
+cdef int conv_pyref2extattrref(void* ipt, void* opt, void* bkg, void* priv) except -1:
+
+    cdef PyObject** buf_obj = <PyObject**>ipt
+    cdef href_t* buf_ref = <href_t*>opt
+
+    cdef object obj
+    cdef ExtAttributeReference ref
+
+    if buf_obj[0] != NULL and buf_obj[0] != Py_None:
+        obj = <object>(buf_obj[0])
+        if not isinstance(obj, ExtAttributeReference):
+            raise TypeError("Can't convert incompatible object to HDF5 external attribute reference")
+        ref = <ExtAttributeReference>(buf_obj[0])
+        memcpy(buf_ref, &ref.ref, sizeof(href_t))
+    else:
+        memset(buf_ref, c'\0', sizeof(href_t))
+
+    return 0
+
 
 # =============================================================================
 # Conversion functions
@@ -448,6 +666,18 @@ cdef herr_t pyref2objref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
     return generic_converter(src_id, dst_id, cdata, nl, buf_stride, bkg_stride,
              buf_i, bkg_i, dxpl, conv_pyref2objref, init_generic, H5T_BKG_NO)
 
+cdef herr_t extobjref2pyref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
+                    size_t nl, size_t buf_stride, size_t bkg_stride, void *buf_i,
+                    void *bkg_i, hid_t dxpl) except -1:
+    return generic_converter(src_id, dst_id, cdata, nl, buf_stride, bkg_stride,
+             buf_i, bkg_i, dxpl, conv_extobjref2pyref, init_generic, H5T_BKG_NO)
+
+cdef herr_t pyref2extobjref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
+                    size_t nl, size_t buf_stride, size_t bkg_stride, void *buf_i,
+                    void *bkg_i, hid_t dxpl) except -1:
+    return generic_converter(src_id, dst_id, cdata, nl, buf_stride, bkg_stride,
+             buf_i, bkg_i, dxpl, conv_pyref2extobjref, init_generic, H5T_BKG_NO)
+
 cdef herr_t regref2pyref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
                     size_t nl, size_t buf_stride, size_t bkg_stride, void *buf_i,
                     void *bkg_i, hid_t dxpl) except -1:
@@ -459,6 +689,42 @@ cdef herr_t pyref2regref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
                     void *bkg_i, hid_t dxpl) except -1:
     return generic_converter(src_id, dst_id, cdata, nl, buf_stride, bkg_stride,
              buf_i, bkg_i, dxpl, conv_pyref2regref, init_generic, H5T_BKG_NO)
+
+cdef herr_t extregref2pyref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
+                    size_t nl, size_t buf_stride, size_t bkg_stride, void *buf_i,
+                    void *bkg_i, hid_t dxpl) except -1:
+    return generic_converter(src_id, dst_id, cdata, nl, buf_stride, bkg_stride,
+             buf_i, bkg_i, dxpl, conv_extregref2pyref, init_generic, H5T_BKG_YES)
+
+cdef herr_t pyref2extregref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
+                    size_t nl, size_t buf_stride, size_t bkg_stride, void *buf_i,
+                    void *bkg_i, hid_t dxpl) except -1:
+    return generic_converter(src_id, dst_id, cdata, nl, buf_stride, bkg_stride,
+             buf_i, bkg_i, dxpl, conv_pyref2extregref, init_generic, H5T_BKG_NO)
+
+cdef herr_t attrref2pyref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
+                    size_t nl, size_t buf_stride, size_t bkg_stride, void *buf_i,
+                    void *bkg_i, hid_t dxpl) except -1:
+    return generic_converter(src_id, dst_id, cdata, nl, buf_stride, bkg_stride,
+             buf_i, bkg_i, dxpl, conv_attrref2pyref, init_generic, H5T_BKG_YES)
+
+cdef herr_t pyref2attrref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
+                    size_t nl, size_t buf_stride, size_t bkg_stride, void *buf_i,
+                    void *bkg_i, hid_t dxpl) except -1:
+    return generic_converter(src_id, dst_id, cdata, nl, buf_stride, bkg_stride,
+             buf_i, bkg_i, dxpl, conv_pyref2attrref, init_generic, H5T_BKG_NO)
+
+cdef herr_t extattrref2pyref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
+                    size_t nl, size_t buf_stride, size_t bkg_stride, void *buf_i,
+                    void *bkg_i, hid_t dxpl) except -1:
+    return generic_converter(src_id, dst_id, cdata, nl, buf_stride, bkg_stride,
+             buf_i, bkg_i, dxpl, conv_extattrref2pyref, init_generic, H5T_BKG_YES)
+
+cdef herr_t pyref2extattrref(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
+                    size_t nl, size_t buf_stride, size_t bkg_stride, void *buf_i,
+                    void *bkg_i, hid_t dxpl) except -1:
+    return generic_converter(src_id, dst_id, cdata, nl, buf_stride, bkg_stride,
+             buf_i, bkg_i, dxpl, conv_pyref2extattrref, init_generic, H5T_BKG_NO)
 
 # =============================================================================
 # Enum to integer converter
@@ -497,14 +763,14 @@ cdef int enum_int_converter_conv(hid_t src, hid_t dst, H5T_cdata_t *cdata,
     cdef char* buf = <char*>buf_i
 
     info = <conv_enum_t*>cdata[0].priv
-    
+
     if forward:
         info[0].supertype = H5Tget_super(src)
         info[0].identical = H5Tequal(info[0].supertype, dst)
     else:
         info[0].supertype = H5Tget_super(dst)
         info[0].identical = H5Tequal(info[0].supertype, src)
-   
+
     # Short-circuit success
     if info[0].identical:
         return 0
@@ -599,7 +865,7 @@ cdef herr_t vlen2ndarray(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
             return -2
 
     elif command == H5T_CONV_FREE:
-        
+
         pass
 
     elif command == H5T_CONV_CONV:
@@ -659,7 +925,7 @@ cdef int conv_vlen2ndarray(void* ipt, void* opt, np.dtype elem_dtype,
     if outtype.get_size() > intype.get_size():
         data = realloc(data, outtype.get_size() * in_vlen[0].len)
     H5Tconvert(intype.id, outtype.id, in_vlen[0].len, data, NULL, H5P_DEFAULT)
-    
+
     Py_INCREF(<PyObject*>elem_dtype)
     ndarray = PyArray_NewFromDescr(&PyArray_Type, elem_dtype, 1,
                 dims, NULL, data, flags, <object>NULL)
@@ -669,7 +935,7 @@ cdef int conv_vlen2ndarray(void* ipt, void* opt, np.dtype elem_dtype,
     # Write the new object to the buffer in-place
     in_vlen[0].ptr = NULL
     buf_obj[0] = <PyObject*>ndarray
-    
+
     return 0
 
 cdef herr_t ndarray2vlen(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
@@ -699,7 +965,7 @@ cdef herr_t ndarray2vlen(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
                 return -2
 
     elif command == H5T_CONV_FREE:
-        
+
         pass
 
     elif command == H5T_CONV_CONV:
@@ -759,9 +1025,9 @@ cdef int conv_ndarray2vlen(void* ipt, void* opt,
 
     in_vlen[0].len = len
     in_vlen[0].ptr = data
-    
+
     return 0
-            
+
 # =============================================================================
 
 cpdef int register_converters() except -1:
@@ -773,7 +1039,7 @@ cpdef int register_converters() except -1:
 
     vlstring = H5Tcopy(H5T_C_S1)
     H5Tset_size(vlstring, H5T_VARIABLE)
-    
+
     enum = H5Tenum_create(H5T_STD_I32LE)
 
     vlentype = H5Tvlen_create(H5T_STD_I32LE)
@@ -789,8 +1055,20 @@ cpdef int register_converters() except -1:
     H5Tregister(H5T_PERS_HARD, "objref2pyref", H5T_STD_REF_OBJ, pyobj, objref2pyref)
     H5Tregister(H5T_PERS_HARD, "pyref2objref", pyobj, H5T_STD_REF_OBJ, pyref2objref)
 
-    H5Tregister(H5T_PERS_HARD, "regref2pyref", H5T_STD_REF_DSETREG, pyobj, regref2pyref)
-    H5Tregister(H5T_PERS_HARD, "pyref2regref", pyobj, H5T_STD_REF_DSETREG, pyref2regref)
+    H5Tregister(H5T_PERS_HARD, "extobjref2pyref", H5T_STD_REF_EXT_OBJ, pyobj, extobjref2pyref)
+    H5Tregister(H5T_PERS_HARD, "pyref2extobjref", pyobj, H5T_STD_REF_EXT_OBJ, pyref2extobjref)
+
+    H5Tregister(H5T_PERS_HARD, "regref2pyref", H5T_STD_REF_REG, pyobj, regref2pyref)
+    H5Tregister(H5T_PERS_HARD, "pyref2regref", pyobj, H5T_STD_REF_REG, pyref2regref)
+
+    H5Tregister(H5T_PERS_HARD, "extregref2pyref", H5T_STD_REF_EXT_REG, pyobj, extregref2pyref)
+    H5Tregister(H5T_PERS_HARD, "pyref2extregref", pyobj, H5T_STD_REF_EXT_REG, pyref2extregref)
+
+    H5Tregister(H5T_PERS_HARD, "attrref2pyref", H5T_STD_REF_ATTR, pyobj, attrref2pyref)
+    H5Tregister(H5T_PERS_HARD, "pyref2attrref", pyobj, H5T_STD_REF_ATTR, pyref2attrref)
+
+    H5Tregister(H5T_PERS_HARD, "extattrref2pyref", H5T_STD_REF_EXT_ATTR, pyobj, extattrref2pyref)
+    H5Tregister(H5T_PERS_HARD, "pyref2extattrref", pyobj, H5T_STD_REF_EXT_ATTR, pyref2extattrref)
 
     H5Tregister(H5T_PERS_SOFT, "enum2int", enum, H5T_STD_I32LE, enum2int)
     H5Tregister(H5T_PERS_SOFT, "int2enum", H5T_STD_I32LE, enum, int2enum)
@@ -815,8 +1093,20 @@ cpdef int unregister_converters() except -1:
     H5Tunregister(H5T_PERS_HARD, "objref2pyref", -1, -1, objref2pyref)
     H5Tunregister(H5T_PERS_HARD, "pyref2objref", -1, -1, pyref2objref)
 
+    H5Tunregister(H5T_PERS_HARD, "extobjref2pyref", -1, -1, extobjref2pyref)
+    H5Tunregister(H5T_PERS_HARD, "pyref2extobjref", -1, -1, pyref2extobjref)
+
     H5Tunregister(H5T_PERS_HARD, "regref2pyref", -1, -1, regref2pyref)
     H5Tunregister(H5T_PERS_HARD, "pyref2regref", -1, -1, pyref2regref)
+
+    H5Tunregister(H5T_PERS_HARD, "extregref2pyref", -1, -1, extregref2pyref)
+    H5Tunregister(H5T_PERS_HARD, "pyref2extregref", -1, -1, pyref2extregref)
+
+    H5Tunregister(H5T_PERS_HARD, "attrref2pyref", -1, -1, attrref2pyref)
+    H5Tunregister(H5T_PERS_HARD, "pyref2attrref", -1, -1, pyref2attrref)
+
+    H5Tunregister(H5T_PERS_HARD, "extattrref2pyref", -1, -1, extattrref2pyref)
+    H5Tunregister(H5T_PERS_HARD, "pyref2extattrref", -1, -1, pyref2extattrref)
 
     H5Tunregister(H5T_PERS_SOFT, "enum2int", -1, -1, enum2int)
     H5Tunregister(H5T_PERS_SOFT, "int2enum", -1, -1, int2enum)

@@ -17,6 +17,7 @@ STATUS_IN_PROGRESS = H5ES_STATUS_IN_PROGRESS
 STATUS_SUCCEED = H5ES_STATUS_SUCCEED
 STATUS_FAIL = H5ES_STATUS_FAIL
 STATUS_CANCEL = H5ES_STATUS_CANCEL
+EVENT_STACK_NULL= H5_EVENT_STACK_NULL
 
 # Event stack operations
 
@@ -32,24 +33,24 @@ def create():
 # Not implemented in the HDF5_FF library
 # def cancel(EventStackID es not None, int event_idx not None):
 #    """(EventStackID es, INT event_idx) => INT status
-# 
+#
 #    Cancels the in-progress event specified by event_idx in the event stack
-#    specified by es and returns the event’s status.  
+#    specified by es and returns the event’s status.
 #    """
-# 
+#
 #    cdef H5ES_status_t status
-# 
+#
 #    H5EScancel(es.id, event_idx, &status)
 #    return status
 #
-# 
+#
 # def cancel_all(EventStackID es not None):
 #    """(EventStackID es)
-# 
+#
 #    Cancels all in-progress events in the event stack specified by es and
 #    indicates their statuses.
 #    """
-# 
+#
 #    cdef H5ES_status_t *status
 #    H5EScancel_all(es.id, &status)
 #    return status
@@ -60,7 +61,7 @@ cdef class EventStackID(ObjectID):
     """
     Represents an HDF5 event stack identifier
     """
-   
+
     def _close(self):
         """()
 

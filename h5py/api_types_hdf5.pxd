@@ -11,7 +11,7 @@ from api_types_ext cimport *
 
 cdef extern from "hdf5.h":
   # Basic types
-  ctypedef int hid_t
+  ctypedef long int hid_t
   ctypedef int hbool_t
   ctypedef int herr_t
   ctypedef int htri_t
@@ -432,11 +432,33 @@ cdef extern from "hdf5.h":
   size_t H5R_OBJ_REF_BUF_SIZE
 
   ctypedef enum H5R_type_t:
-    H5R_BADTYPE = (-1),
-    H5R_OBJECT,
-    H5R_DATASET_REGION,
-    H5R_INTERNAL,
-    H5R_MAXTYPE
+    H5R_BADTYPE     =   (-1),   #  Invalid Reference Type
+    H5R_OBJECT,                 #  Object reference
+    H5R_DATASET_REGION,         #  For backward compatibility (region)
+    H5R_REGION,                 #  Region Reference
+    H5R_ATTR,                   #  Attribute reference
+    H5R_EXT_OBJECT,             #  External Object reference
+    H5R_EXT_REGION,             #  External Region Reference
+    H5R_EXT_ATTR,               #  External Attribute reference
+    H5R_MAXTYPE                 #  Highest type (Invalid as true type)
+
+  ctypedef struct href_var:
+    size_t buf_size   # Size of serialized reference
+    void *buf         # Pointer to serialized reference
+
+  # Opaque handle for internal struct:
+  # struct href_t {
+  #   H5R_type_t ref_type;
+  #   union {
+  #       struct {
+  #           size_t buf_size;/* Size of serialized reference */
+  #           void *buf;      /* Pointer to serialized reference */
+  #       } serial;
+  #       haddr_t addr;
+  #   } ref;
+  # };
+  ctypedef struct href_t:
+    pass
 
 # === H5S - Dataspaces ========================================================
 
@@ -540,83 +562,80 @@ cdef extern from "hdf5.h":
 
   # --- Predefined datatypes --------------------------------------------------
 
-  cdef enum:
-    H5T_NATIVE_B8
-    H5T_NATIVE_CHAR
-    H5T_NATIVE_SCHAR
-    H5T_NATIVE_UCHAR
-    H5T_NATIVE_SHORT
-    H5T_NATIVE_USHORT
-    H5T_NATIVE_INT
-    H5T_NATIVE_UINT
-    H5T_NATIVE_LONG
-    H5T_NATIVE_ULONG
-    H5T_NATIVE_LLONG
-    H5T_NATIVE_ULLONG
-    H5T_NATIVE_FLOAT
-    H5T_NATIVE_DOUBLE
-    H5T_NATIVE_LDOUBLE
+  cdef hid_t H5T_NATIVE_B8
+  cdef hid_t H5T_NATIVE_CHAR
+  cdef hid_t H5T_NATIVE_SCHAR
+  cdef hid_t H5T_NATIVE_UCHAR
+  cdef hid_t H5T_NATIVE_SHORT
+  cdef hid_t H5T_NATIVE_USHORT
+  cdef hid_t H5T_NATIVE_INT
+  cdef hid_t H5T_NATIVE_UINT
+  cdef hid_t H5T_NATIVE_LONG
+  cdef hid_t H5T_NATIVE_ULONG
+  cdef hid_t H5T_NATIVE_LLONG
+  cdef hid_t H5T_NATIVE_ULLONG
+  cdef hid_t H5T_NATIVE_FLOAT
+  cdef hid_t H5T_NATIVE_DOUBLE
+  cdef hid_t H5T_NATIVE_LDOUBLE
 
   # "Standard" types
-  cdef enum:
-    H5T_STD_I8LE
-    H5T_STD_I16LE
-    H5T_STD_I32LE
-    H5T_STD_I64LE
-    H5T_STD_U8LE
-    H5T_STD_U16LE
-    H5T_STD_U32LE
-    H5T_STD_U64LE
-    H5T_STD_B8LE
-    H5T_STD_B16LE
-    H5T_STD_B32LE
-    H5T_STD_B64LE
-    H5T_IEEE_F32LE
-    H5T_IEEE_F64LE
-    H5T_STD_I8BE
-    H5T_STD_I16BE
-    H5T_STD_I32BE
-    H5T_STD_I64BE
-    H5T_STD_U8BE
-    H5T_STD_U16BE
-    H5T_STD_U32BE
-    H5T_STD_U64BE
-    H5T_STD_B8BE
-    H5T_STD_B16BE
-    H5T_STD_B32BE
-    H5T_STD_B64BE
-    H5T_IEEE_F32BE
-    H5T_IEEE_F64BE
+  cdef hid_t H5T_STD_I8LE
+  cdef hid_t H5T_STD_I16LE
+  cdef hid_t H5T_STD_I32LE
+  cdef hid_t H5T_STD_I64LE
+  cdef hid_t H5T_STD_U8LE
+  cdef hid_t H5T_STD_U16LE
+  cdef hid_t H5T_STD_U32LE
+  cdef hid_t H5T_STD_U64LE
+  cdef hid_t H5T_STD_B8LE
+  cdef hid_t H5T_STD_B16LE
+  cdef hid_t H5T_STD_B32LE
+  cdef hid_t H5T_STD_B64LE
+  cdef hid_t H5T_IEEE_F32LE
+  cdef hid_t H5T_IEEE_F64LE
+  cdef hid_t H5T_STD_I8BE
+  cdef hid_t H5T_STD_I16BE
+  cdef hid_t H5T_STD_I32BE
+  cdef hid_t H5T_STD_I64BE
+  cdef hid_t H5T_STD_U8BE
+  cdef hid_t H5T_STD_U16BE
+  cdef hid_t H5T_STD_U32BE
+  cdef hid_t H5T_STD_U64BE
+  cdef hid_t H5T_STD_B8BE
+  cdef hid_t H5T_STD_B16BE
+  cdef hid_t H5T_STD_B32BE
+  cdef hid_t H5T_STD_B64BE
+  cdef hid_t H5T_IEEE_F32BE
+  cdef hid_t H5T_IEEE_F64BE
 
-  cdef enum:
-    H5T_NATIVE_INT8
-    H5T_NATIVE_UINT8
-    H5T_NATIVE_INT16
-    H5T_NATIVE_UINT16
-    H5T_NATIVE_INT32
-    H5T_NATIVE_UINT32
-    H5T_NATIVE_INT64
-    H5T_NATIVE_UINT64
+  cdef hid_t H5T_NATIVE_INT8
+  cdef hid_t H5T_NATIVE_UINT8
+  cdef hid_t H5T_NATIVE_INT16
+  cdef hid_t H5T_NATIVE_UINT16
+  cdef hid_t H5T_NATIVE_INT32
+  cdef hid_t H5T_NATIVE_UINT32
+  cdef hid_t H5T_NATIVE_INT64
+  cdef hid_t H5T_NATIVE_UINT64
 
   # Unix time types
-  cdef enum:
-    H5T_UNIX_D32LE
-    H5T_UNIX_D64LE
-    H5T_UNIX_D32BE
-    H5T_UNIX_D64BE
+  cdef hid_t H5T_UNIX_D32LE
+  cdef hid_t H5T_UNIX_D64LE
+  cdef hid_t H5T_UNIX_D32BE
+  cdef hid_t H5T_UNIX_D64BE
 
   # String types
-  cdef enum:
-    H5T_FORTRAN_S1
-    H5T_C_S1
+  cdef hid_t H5T_FORTRAN_S1
+  cdef hid_t H5T_C_S1
 
   # References
-  cdef enum:
-    H5T_STD_REF_OBJ
-    H5T_STD_REF_DSETREG
+  cdef hid_t H5T_STD_REF_OBJ
+  cdef hid_t H5T_STD_REF_REG
+  cdef hid_t H5T_STD_REF_ATTR
+  cdef hid_t H5T_STD_REF_EXT_OBJ
+  cdef hid_t H5T_STD_REF_EXT_REG
+  cdef hid_t H5T_STD_REF_EXT_ATTR
 
   # Type-conversion infrastructure
-
   ctypedef enum H5T_pers_t:
     H5T_PERS_DONTCARE	= -1,
     H5T_PERS_HARD	= 0,	    # /*hard conversion function		     */
@@ -775,10 +794,10 @@ cdef extern from "hdf5.h":
 
 
 
-cdef extern from "hdf5_hl.h":
+#cdef extern from "hdf5_hl.h":
 # === H5DS - Dimension Scales API =============================================
 
-  ctypedef herr_t  (*H5DS_iterate_t)(hid_t dset, unsigned dim, hid_t scale, void *visitor_data) except 2
+#  ctypedef herr_t  (*H5DS_iterate_t)(hid_t dset, unsigned dim, hid_t scale, void *visitor_data) except 2
 
 
 
@@ -861,7 +880,7 @@ cdef extern from "H5Xpublic.h":
 
     # Maximum number of plugins allowed in a pipeline
     int H5X_MAX_NPLUGINS    # 16
-    
+
     # Index type
     ctypedef enum H5X_type_t:
         H5X_TYPE_LINK_NAME,   # Link name index
@@ -893,3 +912,11 @@ cdef extern from "H5Qpublic.h":
         H5Q_COMBINE_AND,
         H5Q_COMBINE_OR,
         H5Q_SINGLETON
+
+    int H5Q_REF_REG   # region references are present
+    int H5Q_REF_OBJ   # object references are present
+    int H5Q_REF_ATTR  # attribute references are present
+
+    char* H5Q_VIEW_REF_REG_NAME   # region references
+    char* H5Q_VIEW_REF_OBJ_NAME   # object references
+    char* H5Q_VIEW_REF_ATTR_NAME  # attribute references

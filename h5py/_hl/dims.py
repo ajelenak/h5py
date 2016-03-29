@@ -9,7 +9,7 @@
 
 import numpy
 
-from h5py import h5ds
+# from h5py import h5ds
 from . import base
 from .dataset import Dataset, readtime_dtype
 

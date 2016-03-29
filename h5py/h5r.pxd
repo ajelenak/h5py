@@ -9,21 +9,23 @@
 
 from defs cimport *
 
-cdef extern from "hdf5.h":
-
-  ctypedef haddr_t hobj_ref_t
-  ctypedef unsigned char hdset_reg_ref_t[12]
-
-cdef union ref_u:
-    hobj_ref_t         obj_ref
-    hdset_reg_ref_t    reg_ref
-
 cdef class Reference:
 
-    cdef ref_u ref
+    cdef href_t ref
     cdef readonly int typecode
     cdef readonly size_t typesize
 
 cdef class RegionReference(Reference):
     pass
 
+cdef class AttributeReference(Reference):
+    pass
+
+cdef class ExtReference(Reference):
+    pass
+
+cdef class ExtRegionReference(Reference):
+    pass
+
+cdef class ExtAttributeReference(Reference):
+    pass

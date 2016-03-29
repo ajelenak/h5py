@@ -275,7 +275,8 @@ class Group(Index, HLObject, DictCompat):
             return self.create_group(name)
         grp = self[name]
         if not isinstance(grp, Group):
-            raise TypeError("Incompatible object (%s) already exists" % grp.__class__.__name__)
+            raise TypeError("Incompatible object (%s) already exists"
+                            % grp.__class__.__name__)
         return grp
 
     def __getitem__(self, name):
@@ -596,6 +597,14 @@ class Group(Index, HLObject, DictCompat):
         if py3:
             return r
         return r.encode('utf8')
+
+    def apply_query(self, q):
+        """Apply the query ``q`` to this object.
+
+        Currently the default view creation propery list is used.
+        """
+        return q.id.apply_ff(self.id, self.rc.id, es=self.es.id)
+
 
 collections.MutableMapping.register(Group)
 

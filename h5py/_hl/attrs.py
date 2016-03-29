@@ -128,9 +128,10 @@ class AttributeManager(base.DictCompat, base.CommonStateObject):
 
         space = h5s.create_simple(shape)
 
-        if name in self:
-            h5a.delete_ff(self._pnt.id, self._pnt.tr.id, self._e(name),
-                          es=self._pnt.es.id)
+        # The "name in self" operation cannot be executed in a transaction.
+        # if name in self:
+        #     h5a.delete_ff(self._pnt.id, self._pnt.tr.id, self._e(name),
+        #                   es=self._pnt.es.id)
 
         attr = h5a.create_ff(self._pnt.id, self._e(name), htype, space,
                              self._pnt.tr.id, es=self._pnt.es.id)
@@ -176,8 +177,8 @@ class AttributeManager(base.DictCompat, base.CommonStateObject):
             attr.write_ff(value, self._pnt.tr.id, es=self._pnt.es.id)
 
     def __len__(self):
-        """ Number of attributes attached to the object. 
-        
+        """ Number of attributes attached to the object.
+
         For Exascale FastForward.
         """
         return h5o.get_info_ff(self._pnt.id, self._pnt.rc.id).num_attrs

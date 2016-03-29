@@ -33,7 +33,7 @@ def select(shape, args, dsid):
     args
         Either a single argument or a tuple of arguments.  See below for
         supported classes of argument.
-    
+
     dsid
         A h5py.h5d.DatasetID instance representing the source dataset.
 
@@ -71,11 +71,11 @@ def select(shape, args, dsid):
             sel[arg]
             return sel
 
-        elif isinstance(arg, h5r.RegionReference):
+        elif isinstance(arg, h5r.DsetRegionReference):
             sid = h5r.get_region(arg, dsid)
             if shape != sid.shape:
                 raise TypeError("Reference shape does not match dataset shape")
-                
+
             return Selection(shape, spaceid=sid)
 
     for a in args:
@@ -86,7 +86,7 @@ def select(shape, args, dsid):
                 sel = FancySelection(shape)
                 sel[args]
                 return sel
-    
+
     sel = SimpleSelection(shape)
     sel[args]
     return sel
@@ -112,7 +112,7 @@ class _RegionProxy(object):
         object.  Selection must be compatible with the dataset.
         """
         selection = select(self.id.shape, args)
-        return h5r.create(self.id, '.', h5r.DATASET_REGION, selection.id)
+        return h5r.create(h5r.DATASET_REGION, self.id, '.', selection.id)
 
 class Selection(object):
 
@@ -120,7 +120,7 @@ class Selection(object):
         Base class for HDF5 dataspace selections.  Subclasses support the
         "selection protocol", which means they have at least the following
         members:
-        
+
         __init__(shape)   => Create a new selection on "shape"-tuple
         __getitem__(args) => Perform a selection with the range specified.
                              What args are allowed depends on the
@@ -128,7 +128,7 @@ class Selection(object):
 
         id (read-only) =>      h5py.h5s.SpaceID instance
         shape (read-only) =>   The shape of the dataspace.
-        mshape  (read-only) => The shape of the selection region. 
+        mshape  (read-only) => The shape of the selection region.
                                Not guaranteed to fit within "shape", although
                                the total number of points is less than
                                product(shape).
@@ -248,7 +248,7 @@ class SimpleSelection(Selection):
 
         if not isinstance(args, tuple):
             args = (args,)
-  
+
         if self.shape == ():
             if len(args) > 0 and args[0] not in (Ellipsis, ()):
                 raise TypeError("Invalid index for scalar dataset (only ..., () allowed)")
@@ -329,10 +329,10 @@ class HyperSelection(Selection):
             >>> sel[...]    = XOR              # Now 90 points
 
         Legal operators (in the h5py.selections module) are:
-           
+
         SET
             New selection, wiping out any old one
-       
+
         AND, XOR, OR (or True)
             Logical AND/XOR/OR between new and old selection
 
@@ -341,7 +341,7 @@ class HyperSelection(Selection):
 
         NOTB (or False)
             Select only regions in old selection which don't intersect the new
- 
+
     """
 
     def __getitem__(self, args):
@@ -352,7 +352,7 @@ class HyperSelection(Selection):
 
         if not isinstance(args, tuple):
             args = (args,)
- 
+
         start, count, step, scalar = _handle_simple(self.shape, args)
 
         if not op in (SET, OR, AND, XOR, NOTB, NOTA, True, False):
@@ -367,7 +367,7 @@ class HyperSelection(Selection):
 
         if seltype == h5s.SEL_ALL:
             self._id.select_hyperslab((0,)*len(self.shape), self.shape, op=h5s.SELECT_SET)
-       
+
         elif seltype == h5s.SEL_NONE:
             if op in (SET, OR, XOR, NOTA):
                 op = SET
@@ -540,8 +540,8 @@ def _translate_slice(exp, length):
         for use with the hyperslab selection routines
     """
     start, stop, step = exp.indices(length)
-        # Now if step > 0, then start and stop are in [0, length]; 
-        # if step < 0, they are in [-1, length - 1] (Python 2.6b2 and later; 
+        # Now if step > 0, then start and stop are in [0, length];
+        # if step < 0, they are in [-1, length - 1] (Python 2.6b2 and later;
         # Python issue 3004).
 
     if step < 1:
@@ -557,7 +557,7 @@ def guess_shape(sid):
     """ Given a dataspace, try to deduce the shape of the selection.
 
     Returns one of:
-        * A tuple with the selection shape, same length as the dataspace 
+        * A tuple with the selection shape, same length as the dataspace
         * A 1D selection shape for point-based and multiple-hyperslab selections
         * None, for unselected scalars and for NULL dataspaces
     """
