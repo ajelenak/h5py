@@ -114,6 +114,12 @@ hdf5:
   # Direct Chunk Writing
   1.8.11    herr_t H5DOwrite_chunk(hid_t dset_id, hid_t dxpl_id, uint32_t filters, const hsize_t *offset, size_t data_size, const void *buf)
 
+  # Added for the Task 28 - WAAC project
+  herr_t H5Dget_dataset_storage_info(hid_t dset_id, uint8_t *layout_type, hsize_t *num_chunks)
+  herr_t H5Dget_dataset_chunk_storage_info(hid_t dset_id, H5D_chunk_storage_info_t *chunk_st_array, unsigned int *num_chunk_dims_ptr)
+  herr_t H5Dget_dataset_contiguous_storage_info(hid_t dset_id, haddr_t *addr_ptr, hsize_t *sizeptr)
+  herr_t H5Dget_dataset_compact_storage_info(hid_t dset_id, size_t *sizeptr)
+
 
   # === H5E - Minimal error-handling interface ================================
 

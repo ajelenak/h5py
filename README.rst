@@ -1,8 +1,10 @@
 .. image:: https://travis-ci.org/h5py/h5py.png
    :target: https://travis-ci.org/h5py/h5py
 
-HDF5 for Python
-===============
+HDF5 for Python (**Special Version**)
+=====================================
+
+This is a customized version of the h5py code for a version of the HDF5 v1.8.17 library that is **not publicly available**. The new code allows retrieval of storage information about datasets, such as offsets and sizes of blocks of bytes where the datasets' data is actually located in a HDF5 file.
 
 Websites
 --------
@@ -21,6 +23,7 @@ You need, at a minimum:
 * Python 2.6, 2.7, 3.2, 3.3, or 3.4
 * NumPy 1.6.1 or later
 * The "six" package for Python 2/3 compatibility
+* Customized version of the HDF5 v1.8.17 library
 
 To build on UNIX:
 
@@ -37,15 +40,15 @@ Installing on UNIX
 ------------------
 
 Via pip (recommended)::
- 
-   pip install h5py
+
+   pip install -e git+https://github.com/ajelenak-thg/h5py@storage-info
 
 From a release tarball or Git checkout::
 
    python setup.py build
    python setup.py test # optional
    [sudo] python setup.py install
-   
+
 Reporting bugs
 --------------
 

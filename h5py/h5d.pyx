@@ -16,7 +16,7 @@ include "config.pxi"
 from _objects cimport pdefault
 from numpy cimport ndarray, import_array, PyArray_DATA, NPY_WRITEABLE
 from utils cimport  check_numpy_read, check_numpy_write, \
-                    convert_tuple, emalloc, efree
+                    convert_tuple, convert_dims, emalloc, efree
 from h5t cimport TypeID, typewrap, py_create
 from h5s cimport SpaceID
 from h5p cimport PropID, propwrap
@@ -55,6 +55,87 @@ IF HDF5_VERSION >= VDS_MIN_HDF5_VERSION:
     VIRTUAL = H5D_VIRTUAL
     VDS_FIRST_MISSING   = H5D_VDS_FIRST_MISSING
     VDS_LAST_AVAILABLE  = H5D_VDS_LAST_AVAILABLE
+
+
+# Added for the Task 28 - WAAC project
+cdef class ContiguousStorageInfo:
+    """Storage information of a contiguous dataset"""
+
+    cdef haddr_t offset
+    cdef hsize_t size
+    cdef tuple log_addr
+
+    property size:
+        def __get__(self):
+            """Dataset's size in bytes"""
+            return self.size
+
+    property file_addr:
+        def __get__(self):
+            """Chunk byte location in the file"""
+            return self.offset
+
+    property logical_addr:
+        def __get__(self):
+            """Logical (dataspace) address of the dataset's first element"""
+            return self.log_addr
+
+    def __init__(self, offset, size, laddr):
+        self.offset = offset
+        self.size = size
+        self.log_addr = laddr
+
+    def __repr__(self):
+        return '<HDF5 dataset storage: contiguous, file address: %s, size: %s bytes>' \
+            % (self.file_addr, self.size)
+
+
+# Added for the Task 28 - WAAC project
+cdef class ChunkStorageInfo:
+    """Represent the H5D_chunk_storage_info_t structure"""
+
+    cdef H5D_chunk_storage_info_t stinfo
+    cdef uint64_t _rank
+    cdef uint64_t order
+
+    property size:
+        def __get__(self):
+            """Chunk size in bytes"""
+            return self.stinfo.nbytes
+
+    property file_addr:
+        def __get__(self):
+            """Chunk byte location in the file"""
+            return self.stinfo.chunk_addr
+
+    property filter_mask:
+        def __get__(self):
+            """Mask providing a record of which filters are used.
+
+            The default value of the mask is zero (0), indicating that all
+            enabled filters are applied. A filter is skipped if the bit
+            corresponding to the filter’s position in the pipeline (0 <=
+            position < 32) is turned on.
+            """
+            return self.stinfo.chunk_filter_mask
+
+    property logical_addr:
+        def __get__(self):
+            """Logical (dataspace) address of the chunk's first element"""
+            return convert_dims(self.stinfo.chunk_offset, <hsize_t>self._rank)
+
+    property order:
+        def __get__(self):
+            """Chunk's order"""
+            return self.order
+
+    def __init__(self, rank, order):
+        self._rank = rank
+        self.order = order
+
+    def __repr__(self):
+        return '<HDF5 dataset storage: chunked, chunk #%s file address: %s, size: %s bytes, logical address: %s>' \
+            % (self.order, self.file_addr, self.size, self.logical_addr)
 
 # === Dataset operations ======================================================
 
@@ -430,3 +511,76 @@ cdef class DatasetID(ObjectID):
                 efree(offset)
                 if space_id:
                     H5Sclose(space_id)
+
+    # Added for the Task 28 - WAAC project
+    @with_phil
+    def get_storage_info(self):
+        """() => TUPLE(STR layout, UINT num_chunks)
+
+        Retrieve the layout type and the number of chunks if the dataset is
+        chunked, 0 otherwise. The layout type is one of: 'contiguous',
+        'chunked', or 'compact'.
+        """
+        cdef uint8_t layout = 0
+        cdef hsize_t num_chunks = 0
+        H5Dget_dataset_storage_info(self.id, &layout, &num_chunks)
+        if layout == 1:
+            return ('contiguous', 0)
+        elif layout == 2:
+            return ('chunked', num_chunks)
+        elif layout == 3:
+            return ('compact', 0)
+        else:
+            raise ValueError('Unkonwn layout value: %d' % layout)
+
+    # Added for the Task 28 - WAAC project
+    @with_phil
+    def get_contiguous_storage_info(self):
+        """() => ContiguousStorageInfo
+
+        Retrieve the byte offset and the size in bytes of a contiguous dataset.
+        """
+        cdef haddr_t offset
+        cdef hsize_t size
+        cdef ContiguousStorageInfo stinfo
+        H5Dget_dataset_contiguous_storage_info(self.id, &offset, &size)
+        stinfo = ContiguousStorageInfo(offset, size, (0,)*self.rank)
+        return stinfo
+
+    # Added for the Task 28 - WAAC project
+    @with_phil
+    def get_chunk_storage_info(self):
+        """() => LIST(ChunkStorageInfo)
+
+        Retrieve the storage info for each dataset's chunk as a list of the
+        ChunkStorageInfo (H5D_chunk_storage_info_t struct) objects.
+        """
+        cdef uint8_t layout = 0
+        cdef hsize_t num_chunks = 0
+        cdef unsigned int rank = 0
+        cdef H5D_chunk_storage_info_t *chunks_info = NULL
+        cdef hsize_t i = 0
+        cdef ChunkStorageInfo chunk
+        cdef list chunk_list = []
+
+        H5Dget_dataset_storage_info(self.id, &layout, &num_chunks)
+        chunks_info = <H5D_chunk_storage_info_t*>emalloc(
+            sizeof(H5D_chunk_storage_info_t)*num_chunks)
+
+        try:
+            H5Dget_dataset_chunk_storage_info(self.id, chunks_info, &rank)
+
+            # HDF5 internally adds another dimension (fastest dimension) for a
+            # chunk to store the size of its datatype. So the number of
+            # dimensions in a chunk is 1 more than the number of dimensions in
+            # a chunk users understand.
+            rank = rank - 1
+
+            for i in range(num_chunks):
+                chunk = ChunkStorageInfo(rank, i)
+                chunk.stinfo = chunks_info[i]
+                chunk_list.append(chunk)
+            return chunk_list
+
+        finally:
+            efree(chunks_info)

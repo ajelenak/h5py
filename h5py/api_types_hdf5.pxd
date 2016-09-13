@@ -85,6 +85,7 @@ cdef extern from "hdf5.h":
   ctypedef  herr_t (*H5D_operator_t)(void *elem, hid_t type_id, unsigned ndim,
                     hsize_t *point, void *operator_data) except -1
 
+
 # === H5F - File API ==========================================================
 
   # File constants
@@ -432,7 +433,8 @@ cdef extern from "hdf5.h":
 
 # === H5S - Dataspaces ========================================================
 
-  int H5S_ALL, H5S_MAX_RANK
+  cdef enum:
+    H5S_ALL, H5S_MAX_RANK
   hsize_t H5S_UNLIMITED
 
   # Codes for defining selections
@@ -705,6 +707,14 @@ cdef extern from "hdf5.h":
 
   unsigned int H5AC_METADATA_WRITE_STRATEGY__PROCESS_0_ONLY   # 0
   unsigned int H5AC_METADATA_WRITE_STRATEGY__DISTRIBUTED      # 1
+
+
+  # Added for the Task 28 - WAAC project
+  ctypedef struct H5D_chunk_storage_info_t:
+    uint32_t    nbytes;                         # Size of stored data
+    hsize_t     chunk_offset[H5S_MAX_RANK+1];   # Logical offset to start
+    unsigned    chunk_filter_mask;              # Excluded filters
+    haddr_t     chunk_addr;                     # Address of chunk in file
 
 
   cdef extern from "H5Cpublic.h":

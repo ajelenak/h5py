@@ -147,7 +147,7 @@ class AstypeContext(object):
     """
         Context manager which allows changing the type read from a dataset.
     """
-    
+
     def __init__(self, dset, dtype):
         self._dset = dset
         self._dtype = numpy.dtype(dtype)
@@ -183,7 +183,7 @@ class Dataset(HLObject):
     """
         Represents an HDF5 dataset
     """
-        
+
     def astype(self, dtype):
         """ Get a context manager allowing you to perform reads to a
         different destination type, e.g.:
@@ -309,6 +309,22 @@ class Dataset(HLObject):
         arr = numpy.ndarray((1,), dtype=self.dtype)
         self._dcpl.get_fill_value(arr)
         return arr[0]
+
+    # Added for the Task 28 - WAAC project
+    @property
+    @with_phil
+    def storage(self):
+        """Provide storage information."""
+        dcpl = self._dcpl
+        layout = dcpl.get_layout()
+        if layout == h5d.CONTIGUOUS:
+            return self.id.get_contiguous_storage_info()
+        elif layout == h5d.CHUNKED:
+            return self.id.get_chunk_storage_info()
+        else:
+            raise NotImplemented(
+                'Storage information only available for contiguous or '
+                'chunked datasets')
 
     @with_phil
     def __init__(self, bind):
@@ -453,7 +469,7 @@ class Dataset(HLObject):
             # These are the only access methods NumPy allows for such objects
             if args == (Ellipsis,) or args == tuple():
                 return numpy.empty(self.shape, dtype=new_dtype)
-            
+
         # === Scalar dataspaces =================
 
         if self.shape == ():
@@ -582,7 +598,7 @@ class Dataset(HLObject):
             if len(mismatch) != 0:
                 mismatch = ", ".join('"%s"'%x for x in mismatch)
                 raise ValueError("Illegal slicing argument (fields %s not in dataset type)" % mismatch)
-        
+
             # Write non-compound source into a single dataset field
             if len(names) == 1 and val.dtype.fields is None:
                 subtype = h5t.py_create(val.dtype)
@@ -710,26 +726,26 @@ class Dataset(HLObject):
         if six.PY2:
             return r.encode('utf8')
         return r
-        
+
     if hasattr(h5d.DatasetID, "refresh"):
         @with_phil
         def refresh(self):
             """ Refresh the dataset metadata by reloading from the file.
-            
+
             This is part of the SWMR features and only exist when the HDF5
             librarary version >=1.9.178
             """
             self._id.refresh()
-                
+
     if hasattr(h5d.DatasetID, "flush"):
         @with_phil
         def flush(self):
             """ Flush the dataset data and metadata to the file.
             If the dataset is chunked, raw data chunks are written to the file.
-            
-            This is part of the SWMR features and only exist when the HDF5 
+
+            This is part of the SWMR features and only exist when the HDF5
             librarary version >=1.9.178
             """
             self._id.flush()
-            
+
 
