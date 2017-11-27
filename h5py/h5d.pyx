@@ -75,10 +75,26 @@ cdef class ContiguousStorageInfo:
             """Chunk byte location in the file"""
             return self.offset
 
+    property filter_mask:
+        def __get__(self):
+            """Mask providing a record of which filters are used.
+
+            The default value of the mask is zero (0), indicating that all
+            enabled filters are applied. A filter is skipped if the bit
+            corresponding to the filter’s position in the pipeline (0 <=
+            position < 32) is turned on.
+            """
+            return <unsigned>0xFFFFFFFF
+
     property logical_addr:
         def __get__(self):
             """Logical (dataspace) address of the dataset's first element"""
             return self.log_addr
+
+    property order:
+        def __get__(self):
+            """Chunk's order"""
+            return 0
 
     def __init__(self, offset, size, laddr):
         self.offset = offset
@@ -514,38 +530,28 @@ cdef class DatasetID(ObjectID):
 
     # Added for the Task 28 - WAAC project
     @with_phil
-    def get_storage_info(self):
-        """() => TUPLE(STR layout, UINT num_chunks)
+    def get_contiguous_storage_info(self):
+        """() => LIST(ContiguousStorageInfo)
 
-        Retrieve the layout type and the number of chunks if the dataset is
-        chunked, 0 otherwise. The layout type is one of: 'contiguous',
-        'chunked', or 'compact'.
+        Retrieve the byte offset and the size in bytes of a contiguous dataset
+        as a list with one ContiguousStorageInfo object. An empty list is
+        returned if the dataset has no storage ("empty" dataset).
         """
         cdef uint8_t layout = 0
+        cdef uint8_t status = 0
         cdef hsize_t num_chunks = 0
-        H5Dget_dataset_storage_info(self.id, &layout, &num_chunks)
-        if layout == 1:
-            return ('contiguous', 0)
-        elif layout == 2:
-            return ('chunked', num_chunks)
-        elif layout == 3:
-            return ('compact', 0)
-        else:
-            raise ValueError('Unkonwn layout value: %d' % layout)
-
-    # Added for the Task 28 - WAAC project
-    @with_phil
-    def get_contiguous_storage_info(self):
-        """() => ContiguousStorageInfo
-
-        Retrieve the byte offset and the size in bytes of a contiguous dataset.
-        """
         cdef haddr_t offset
         cdef hsize_t size
-        cdef ContiguousStorageInfo stinfo
+        cdef ContiguousStorageInfo bstream
+        cdef list st_info = []
+
+        H5Dget_dataset_storage_info(self.id, &layout, &num_chunks, &status)
+        if status == 0:
+            return st_info
         H5Dget_dataset_contiguous_storage_info(self.id, &offset, &size)
-        stinfo = ContiguousStorageInfo(offset, size, (0,)*self.rank)
-        return stinfo
+        bstream = ContiguousStorageInfo(offset, size, (0,)*self.rank)
+        st_info.append(bstream)
+        return st_info
 
     # Added for the Task 28 - WAAC project
     @with_phil
@@ -553,9 +559,11 @@ cdef class DatasetID(ObjectID):
         """() => LIST(ChunkStorageInfo)
 
         Retrieve the storage info for each dataset's chunk as a list of the
-        ChunkStorageInfo (H5D_chunk_storage_info_t struct) objects.
+        ChunkStorageInfo (H5D_chunk_storage_info_t struct) objects. An empty
+        list is returned if the dataset has no storage ("empty" dataset).
         """
         cdef uint8_t layout = 0
+        cdef uint8_t status = 0
         cdef hsize_t num_chunks = 0
         cdef unsigned int rank = 0
         cdef H5D_chunk_storage_info_t *chunks_info = NULL
@@ -563,7 +571,10 @@ cdef class DatasetID(ObjectID):
         cdef ChunkStorageInfo chunk
         cdef list chunk_list = []
 
-        H5Dget_dataset_storage_info(self.id, &layout, &num_chunks)
+        H5Dget_dataset_storage_info(self.id, &layout, &num_chunks, &status)
+        if status == 0:
+            return chunk_list
+
         chunks_info = <H5D_chunk_storage_info_t*>emalloc(
             sizeof(H5D_chunk_storage_info_t)*num_chunks)
 

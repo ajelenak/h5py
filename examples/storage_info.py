@@ -19,31 +19,26 @@ filename = os.path.join(gettempdir(), 'storage-demo.h5')
 with h5py.File(filename, 'w') as f:
     f.create_dataset('cont', data=np.random.rand(10, 20))
     f.create_dataset('chunk', data=np.random.rand(43, 37), chunks=(9, 12))
+    f.create_dataset('empty', shape=(5, 10), dtype='i4')
+    f.create_dataset('scalar', shape=(), data=1000, dtype='u2')
 
-# Open the same file and display the storage information for the two datasets.
-# That information is obtained via the storage property of the dataset.
-f = h5py.File(filename, 'r')
-
-# Contiguous storage dataset
-cont = f['/cont']
-stinfo = cont.storage
-print('Storage information for {} is {}'.format(cont.name, type(stinfo)))
-print('Dataset {}: at byte {}, size {} bytes'
-      .format(cont.name, stinfo.file_addr, stinfo.size))
-
-print('\n\n')
-
-# Chunked storage dataset
-chunk = f['/chunk']
-stinfo = chunk.storage
-print('Storage information for {} are {} in a {}'
-      .format(chunk.name, type(stinfo[0]), type(stinfo)))
-for si in stinfo:
-    print('Dataset {}: chunk #{} at byte {}, size {} bytes, '
-          'logical address {}'.format(chunk.name, si.order, si.file_addr,
-                                      si.size, si.logical_addr))
-
-f.close()
+# Open the same file and display the storage information for the three
+# datasets. That information is obtained via the storage property of the
+# h5py.Dataset class.
+dset_paths = ['/cont', '/chunk', '/empty', '/scalar']
+with h5py.File(filename, 'r') as f:
+    for dp in dset_paths:
+        dset = f[dp]
+        stinfo = dset.storage
+        print('Storage information for {}'.format(dset.name))
+        if stinfo:
+            for s in stinfo:
+                print('Byte stream #{}: at byte {}, size {} bytes, '
+                      'logical address {}'.format(s.order, s.file_addr, s.size,
+                                                  s.logical_addr))
+        else:
+            print('Empty dataset')
+        print('\n')
 
 # Remove the file
 try:
