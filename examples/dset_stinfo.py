@@ -2,12 +2,11 @@
 """
 Print storage information for every HDF5 dataset in a file.
 
-Dataset storage information is printed on a single line. For chunked layout,
-storage information on one line applies to one chunk.
+Dataset storage information for each byte stream is printed on a single line.
 
 Format:
 
-Dataset: {name}[, chunk #{int}, logical address ({int}, ...)], at byte {int} of size {int} bytes
+Dataset: {name}, byte stream #{int}, logical address ({int}, ...), at byte {int} of size {int} bytes
 
 Usage:
 
@@ -25,17 +24,14 @@ def dset_stinfo(name, obj):
         try:
             stinfo = obj.storage
         except Exception:
+            print('Caught exception for {}'.format(obj.name))
             return
 
-        if isinstance(stinfo, h5py.h5d.ContiguousStorageInfo):
-            print ('Dataset: {}, at byte {} of size {} bytes'
-                   .format(obj.name, stinfo.file_addr, stinfo.size))
-        else:
-            for si in stinfo:
-                print ('Dataset: {}, chunk #{}, logical address {}, '
-                       'at byte {} of size {} bytes'
-                       .format(obj.name, si.order, si.logical_addr,
-                               si.file_addr, si.size))
+        for si in stinfo:
+            print ('Dataset: {}, byte stream #{}, logical address {}, '
+                   'at byte {} of size {} bytes'
+                   .format(obj.name, si.order, si.logical_addr,
+                           si.file_addr, si.size))
 
 
 f = h5py.File(sys.argv[1], 'r')
