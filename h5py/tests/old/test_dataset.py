@@ -24,7 +24,7 @@ import six
 
 import numpy as np
 
-from .common import ut, TestCase
+from ..common import ut, TestCase
 from h5py.highlevel import File, Group, Dataset
 from h5py._hl.base import is_empty_dataspace
 from h5py import h5t
@@ -93,6 +93,7 @@ class TestCreateShape(BaseDataset):
         dset = self.f.create_dataset('foo', (63,), dtype=np.longdouble)
         self.assertEqual(dset.dtype, np.longdouble)
 
+    @ut.skipIf(not hasattr(np, "complex256"), "No support for complex256")
     def test_complex256(self):
         """ Confirm that the default dtype is float """
         dset = self.f.create_dataset('foo', (63,),
@@ -545,7 +546,7 @@ class TestAutoCreate(BaseDataset):
 
     def test_vlen_unicode(self):
         """ Assignment of a unicode string produces a vlen unicode dataset """
-        self.f['x'] = six.u("Hello there") + six.unichr(0x2034)
+        self.f['x'] = u"Hello there" + six.unichr(0x2034)
         ds = self.f['x']
         tid = ds.id.get_type()
         self.assertEqual(type(tid), h5py.h5t.TypeStringID)
@@ -727,7 +728,7 @@ class TestStrings(BaseDataset):
         """
         dt = h5py.special_dtype(vlen=six.text_type)
         ds = self.f.create_dataset('x', (100,), dtype=dt)
-        data = six.u("Hello") + six.unichr(0x2034)
+        data = u"Hello" + six.unichr(0x2034)
         ds[0] = data
         out = ds[0]
         self.assertEqual(type(out), six.text_type)
@@ -759,7 +760,7 @@ class TestStrings(BaseDataset):
         """
         dt = h5py.special_dtype(vlen=six.text_type)
         ds = self.f.create_dataset('x', (100,), dtype=dt)
-        data = six.u("Hello there") + six.unichr(0x2034)
+        data = u"Hello there" + six.unichr(0x2034)
         ds[0] = data.encode('utf8')
         out = ds[0]
         self.assertEqual(type(out), six.text_type)

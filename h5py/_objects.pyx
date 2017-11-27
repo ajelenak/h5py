@@ -88,6 +88,7 @@ def with_phil(func):
 #
 # See also __cinit__ and __dealloc__ for class ObjectID.
 
+import gc
 import weakref
 import warnings
 
@@ -114,16 +115,28 @@ def nonlocal_close():
     """ Find dead ObjectIDs and set their integer identifiers to 0.
     """
     cdef ObjectID obj
+    cdef list reg_ids
 
-    for python_id, ref in registry.items():
+    # create a cached list of ids whilst the gc is disabled to avoid hitting
+    # the cyclic gc while iterating through the registry dict
+    gc.disable()
+    try:
+        reg_ids = list(registry)
+    finally:
+        gc.enable()
+
+    for python_id in reg_ids:
+        ref = registry.get(python_id)
+
+        # registry dict has changed underneath us, skip to next item
+        if ref is None:
+            continue
+
         obj = ref()
 
-        # Object somehow died without being removed from the registry.
-        # I think this is impossible, but let's make sure.
+        # Object died while walking the registry list, presumably because
+        # the cyclic GC kicked in.
         if obj is None:
-            warnings.warn("Found murdered identifier %d of kind %s HDF5 id %d" % 
-                             (python_id, type(obj), obj.id), RuntimeWarning)
-            del registry[python_id]
             continue
 
         # Locked objects are immortal, as they generally are provided by

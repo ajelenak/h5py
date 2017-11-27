@@ -16,11 +16,12 @@
 from __future__ import absolute_import, with_statement
 
 import os, stat
+from sys import platform
 import tempfile
 
 import six
 
-from .common import ut, TestCase, unicode_filenames
+from ..common import ut, TestCase, UNICODE_FILENAMES, closed_tempfile
 from h5py.highlevel import File
 import h5py
 
@@ -52,7 +53,7 @@ class TestFileOpen(TestCase):
         # Running as root (e.g. in a docker container) gives 'r+' as the file
         # mode, even for a read-only file.  See
         # https://github.com/h5py/h5py/issues/696
-        exp_mode = 'r+' if os.stat(fname).st_uid == 0 else 'r'
+        exp_mode = 'r+' if os.stat(fname).st_uid == 0 and platform != "win32" else 'r'
         try:
             with File(fname) as f:
                 self.assertTrue(f)
@@ -399,13 +400,13 @@ class TestContextManager(TestCase):
             self.assertTrue(fid)
         self.assertTrue(not fid)
 
+@ut.skipIf(not UNICODE_FILENAMES, "Filesystem unicode support required")
 class TestUnicode(TestCase):
 
     """
         Feature: Unicode filenames are supported
     """
 
-    @ut.skipIf(not unicode_filenames, "Filesystem unicode support required")
     def test_unicode(self):
         """ Unicode filenames can be used, and retrieved properly via .filename
         """
@@ -416,6 +417,14 @@ class TestUnicode(TestCase):
             self.assertIsInstance(fid.filename, six.text_type)
         finally:
             fid.close()
+
+    def test_unicode_hdf5_python_consistent(self):
+        """ Unicode filenames can be used, and seen correctly from python
+        """
+        fname = self.mktemp(prefix = six.unichr(0x201a))
+        with File(fname, 'w') as f:
+            self.assertTrue(os.path.exists(fname))
+
 
 class TestFileProperty(TestCase):
 
@@ -474,6 +483,24 @@ class TestClose(TestCase):
         fid.close()
         with self.assertRaises(ValueError):
             fid.create_group('foo')
+
+    def test_close_multiple_default_driver(self):
+        fname = self.mktemp()
+        f = h5py.File(fname, 'w')
+        f.create_group("test")
+        f.close()
+        f.close()
+
+    @ut.skipUnless(mpi, "Parallel HDF5 is required for MPIO driver test")
+    def test_close_multiple_mpio_driver(self):
+        """ MPIO driver and options """
+        from mpi4py import MPI
+
+        fname = self.mktemp()
+        f = File(fname, 'w', driver='mpio', comm=MPI.COMM_WORLD)
+        f.create_group("test")
+        f.close()
+        f.close()
 
 class TestFlush(TestCase):
 
@@ -559,17 +586,17 @@ class TestPathlibSupport(TestCase):
     """
     def test_pathlib_accepted_file(self):
         """ Check that pathlib is accepted by h5py.File """
-        with tempfile.NamedTemporaryFile() as f:
-            path = pathlib.Path(f.name)
+        with closed_tempfile() as f:
+            path = pathlib.Path(f)
             with File(path) as f2:
                 self.assertTrue(True)
 
     def test_pathlib_name_match(self):
         """ Check that using pathlib does not affect naming """
-        with tempfile.NamedTemporaryFile() as f:
-            path = pathlib.Path(f.name)
+        with closed_tempfile() as f:
+            path = pathlib.Path(f)
             with File(path) as h5f1:
                 pathlib_name = h5f1.filename
-            with File(f.name) as h5f2:
+            with File(f) as h5f2:
                 normal_name = h5f2.filename
             self.assertEqual(pathlib_name, normal_name)

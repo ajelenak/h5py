@@ -16,6 +16,8 @@ from __future__ import absolute_import
 import posixpath as pp
 import sys
 
+from threading import local
+
 import six
 from six.moves import xrange    # pylint: disable=redefined-builtin
 
@@ -30,6 +32,7 @@ from .datatype import Datatype
 
 _LEGACY_GZIP_COMPRESSION_VALS = frozenset(range(10))
 MPI = h5.get_config().mpi
+
 
 def readtime_dtype(basetype, names):
     """ Make a NumPy dtype appropriate for reading """
@@ -160,6 +163,7 @@ class AstypeContext(object):
         # pylint: disable=protected-access
         self._dset._local.astype = None
 
+
 if MPI:
     class CollectiveContext(object):
 
@@ -177,6 +181,7 @@ if MPI:
         def __exit__(self, *args):
             # pylint: disable=protected-access
             self._dset._dxpl.set_dxpl_mpio(h5fd.MPIO_INDEPENDENT)
+
 
 class Dataset(HLObject):
 
@@ -200,13 +205,12 @@ class Dataset(HLObject):
             """ Context manager for MPI collective reads & writes """
             return CollectiveContext(self)
 
-
     @property
-    @with_phil
     def dims(self):
         """ Access dimension scales attached to this dataset. """
         from .dims import DimensionManager
-        return DimensionManager(self)
+        with phil:
+            return DimensionManager(self)
 
     @property
     @with_phil
@@ -229,7 +233,7 @@ class Dataset(HLObject):
     @with_phil
     def size(self):
         """Numpy-style attribute giving the total dataset size"""
-        return numpy.prod(self.shape)
+        return numpy.prod(self.shape, dtype=numpy.intp)
 
     @property
     @with_phil
@@ -330,8 +334,6 @@ class Dataset(HLObject):
     def __init__(self, bind):
         """ Create a new Dataset object by binding to a low-level DatasetID.
         """
-        from threading import local
-
         if not isinstance(bind, h5d.DatasetID):
             raise ValueError("%s is not a DatasetID" % bind)
         HLObject.__init__(self, bind)
@@ -713,16 +715,16 @@ class Dataset(HLObject):
     @with_phil
     def __repr__(self):
         if not self:
-            r = six.u('<Closed HDF5 dataset>')
+            r = u'<Closed HDF5 dataset>'
         else:
             if self.name is None:
-                namestr = six.u('("anonymous")')
+                namestr = u'("anonymous")'
             else:
                 name = pp.basename(pp.normpath(self.name))
-                namestr = six.u('"%s"') % (
-                    name if name != six.u('') else six.u('/'))
-            r = six.u('<HDF5 dataset %s: shape %s, type "%s">') % \
-                (namestr, self.shape, self.dtype.str)
+                namestr = u'"%s"' % (name if name != u'' else u'/')
+            r = u'<HDF5 dataset %s: shape %s, type "%s">' % (
+                namestr, self.shape, self.dtype.str
+            )
         if six.PY2:
             return r.encode('utf8')
         return r
@@ -747,5 +749,3 @@ class Dataset(HLObject):
             librarary version >=1.9.178
             """
             self._id.flush()
-
-
