@@ -278,6 +278,12 @@ class TestLibver(TestCase):
         opening a file.
     """
 
+    def test_default(self):
+        """ Opening with no libver arg """
+        f = File(self.mktemp(), 'w')
+        self.assertEqual(f.libver, ('earliest','latest'))
+        f.close()
+
     def test_single(self):
         """ Opening with single libver arg """
         f = File(self.mktemp(), 'w', libver='latest')
@@ -547,7 +553,7 @@ class TestFilename(TestCase):
 class TestBackwardsCompat(TestCase):
 
     """
-        Feauture: Deprecated attributes are included to support 1.3 code
+        Feature: Deprecated attributes are included to support 1.3 code
     """
 
     def test_fid(self):
