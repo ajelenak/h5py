@@ -46,6 +46,10 @@ def plain_fmt(name, h5obj, fobj=None):
             print('Caught exception for {}'.format(h5obj.name))
             return
 
+        if len(stinfo) == 0:
+            print('Dataset: {} is empty'.format(h5obj.name))
+            return
+
         for si in stinfo:
             cksum = get_cksum(fobj, si.file_addr, si.size)
             if cksum is None:
