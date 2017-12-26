@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """
 Example program to demonstrate retrieving HDF5 dataset storage information.
-Currently supported are contiguous and chunked dataset storage.
 
 A special version of the HDF5 v1.8.17 is required for this functionality and it
 is not publicly available (yet).
