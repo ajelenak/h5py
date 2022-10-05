@@ -1336,6 +1336,16 @@ class TestCompound(BaseDataset):
         np.testing.assert_array_equal(
             self.f['test'].fields('x')[:], testdata['x']
         )
+        # Check __array__() method of fields wrapper
+        np.testing.assert_array_equal(
+            np.asarray(self.f['test'].fields(['x', 'y'])), testdata[['x', 'y']]
+        )
+        # Check type conversion of __array__() method
+        dt_int = np.dtype([('x', np.int32)])
+        np.testing.assert_array_equal(
+            np.asarray(self.f['test'].fields(['x']), dtype=dt_int),
+            testdata[['x']].astype(dt_int)
+        )
 
         # Check len() on fields wrapper
         assert len(self.f['test'].fields('x')) == 16
@@ -1803,6 +1813,28 @@ def test_allow_unknown_filter(writable_file):
         allow_unknown_filter=True
     )
     assert str(fake_filter_id) in ds._filters
+
+
+def test_dset_chunk_cache():
+    """Chunk cache configuration for individual datasets."""
+    from io import BytesIO
+    buf = BytesIO()
+    with h5py.File(buf, 'w') as fout:
+        ds = fout.create_dataset(
+            'x', shape=(10, 20), chunks=(5, 4), dtype='i4',
+            rdcc_nbytes=2 * 1024 * 1024, rdcc_w0=0.2, rdcc_nslots=997)
+        ds_chunk_cache = ds.id.get_access_plist().get_chunk_cache()
+        assert fout.id.get_access_plist().get_cache()[1:] != ds_chunk_cache
+        assert ds_chunk_cache == (997, 2 * 1024 * 1024, 0.2)
+
+    buf.seek(0)
+    with h5py.File(buf, 'r') as fin:
+        ds = fin.require_dataset(
+            'x', shape=(10, 20), dtype='i4',
+            rdcc_nbytes=3 * 1024 * 1024, rdcc_w0=0.67, rdcc_nslots=709)
+        ds_chunk_cache = ds.id.get_access_plist().get_chunk_cache()
+        assert fin.id.get_access_plist().get_cache()[1:] != ds_chunk_cache
+        assert ds_chunk_cache == (709, 3 * 1024 * 1024, 0.67)
 
 
 class TestCommutative(BaseDataset):
