@@ -145,8 +145,6 @@ class TestFileOpen(TestCase):
             File(self.mktemp(), 'mongoose')
 
 
-@ut.skipIf(h5py.version.hdf5_version_tuple < (1, 10, 1),
-           'Requires HDF5 1.10.1 or later')
 class TestSpaceStrategy(TestCase):
 
     """
@@ -185,8 +183,6 @@ class TestSpaceStrategy(TestCase):
         fid.close()
 
 
-@ut.skipIf(h5py.version.hdf5_version_tuple < (1, 10, 1),
-           'Requires HDF5 1.10.1 or later')
 @pytest.mark.skipif(h5.get_config().mpi,
                     reason='Page buffering is disabled for parallel HDF5')
 @pytest.mark.mpi_skip
@@ -441,49 +437,12 @@ class TestDrivers(TestCase):
     # TODO: family driver tests
 
 
-@ut.skipUnless(h5py.version.hdf5_version_tuple < (1, 10, 2),
-               'Requires HDF5 before 1.10.2')
-class TestLibver(TestCase):
 
-    """
-        Feature: File format compatibility bounds can be specified when
-        opening a file.
-    """
-
-    def test_default(self):
-        """ Opening with no libver arg """
-        f = File(self.mktemp(), 'w')
-        self.assertEqual(f.libver, ('earliest', 'latest'))
-        f.close()
-
-    def test_single(self):
-        """ Opening with single libver arg """
-        f = File(self.mktemp(), 'w', libver='latest')
-        self.assertEqual(f.libver, ('latest', 'latest'))
-        f.close()
-
-    def test_multiple(self):
-        """ Opening with two libver args """
-        f = File(self.mktemp(), 'w', libver=('earliest', 'latest'))
-        self.assertEqual(f.libver, ('earliest', 'latest'))
-        f.close()
-
-    def test_none(self):
-        """ Omitting libver arg results in maximum compatibility """
-        f = File(self.mktemp(), 'w')
-        self.assertEqual(f.libver, ('earliest', 'latest'))
-        f.close()
-
-
-@ut.skipIf(h5py.version.hdf5_version_tuple < (1, 10, 2),
-           'Requires HDF5 1.10.2 or later')
 class TestNewLibver(TestCase):
 
     """
         Feature: File format compatibility bounds can be specified when
         opening a file.
-
-        Requirement: HDF5 1.10.2 or later
     """
 
     @classmethod
@@ -894,8 +853,6 @@ class TestMPI:
             assert f
             assert f.driver == 'mpio'
 
-    @pytest.mark.skipif(h5py.version.hdf5_version_tuple < (1, 8, 9),
-                        reason="mpio atomic file operations were added in HDF5 1.8.9+")
     def test_mpi_atomic(self, mpi_file_name):
         """ Enable atomic mode for MPIO driver """
         from mpi4py import MPI
@@ -915,8 +872,6 @@ class TestMPI:
         f.close()
 
 
-@ut.skipIf(h5py.version.hdf5_version_tuple < (1, 10, 1),
-           'Requires HDF5 1.10.1 or later')
 class TestSWMRMode(TestCase):
 
     """
