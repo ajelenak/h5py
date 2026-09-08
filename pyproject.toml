@@ -37,7 +37,6 @@ classifiers = [
     "Programming Language :: Cython",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -48,7 +47,7 @@ classifiers = [
     "Topic :: Database",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dynamic = ["dependencies"]
 
 [project.readme]
@@ -130,8 +129,17 @@ wheels = [
 
 [tool.cibuildwheel]
 skip = [
-    "cp310-win_arm64", # Skipped due to unavailability of Python binary and NumPy for Win-ARM64
     "*-win32",
+]
+# See https://github.com/h5py/h5py/issues/2816
+test-skip = [
+    # Skipped due to UV package picks x86_64 Python Interpreter
+    # See https://github.com/astral-sh/uv/issues/12906
+    # Skip the test suite for Python builds that are not preinstalled on the Win-ARM64 runner.
+    "cp311-win_arm64",
+    "cp315-win_arm64",
+    "cp314t-win_arm64",
+    "cp315t-win_arm64",
 ]
 
 build-verbosity = 1
@@ -165,12 +173,32 @@ delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel} \
 H5PY_ROS3 = "0"
 H5PY_DIRECT_VFD = "0"
 
+[[tool.cibuildwheel.overrides]]
+# do not audit cp315 wheels for abi3 violations yet
+# because abi3audit isn't caught up with cp315-abi3 (at the time of writing)
+# https://github.com/cython/cython/issues/7955
+select = "cp315-*"
+audit-command = ""
+
 [tool.uv]
 # never build numpy from source
 no-build-package = ["numpy"]
 index-strategy = "unsafe-best-match"
 
 [[tool.uv.index]]
+# explicitly configure PyPI as the first index to look up instead of the default
+# fallback. This ensures that, if:
+# 1. pre-releases are not allowed and
+# 2. a package with a non-dev version is found on sp-nightlies,
+# then it still won't be preferred over its PyPI counterpart.
+name = "pypi"
+url = "https://pypi.org/simple"
+# exclude packages published less than a week ago (ISO 8601)
+exclude-newer = "P7D"
+
+[[tool.uv.index]]
 name = "sp-nightlies"
 url = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple"
 exclude-newer = false
+# cache metadata for up to 10min (600s), and packages for 12h (43200s)
+cache-control = { api = "max-age=600", files = "max-age=43200, immutable" }
