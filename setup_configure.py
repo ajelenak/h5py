@@ -21,6 +21,7 @@ import platform
 import re
 import sys
 import json
+from pathlib import Path
 
 
 def load_stashed_config():
@@ -132,8 +133,12 @@ class BuildConfig:
             bool(hdf5_pkgconfig_name)
         ]) > 1:
             raise ValueError(
-                "Specify only one of: HDF5 lib/include dirs, HDF5 prefix dir, "
-                "or HDF5 pkgconfig name"
+                "Specify at most one of: HDF5 lib/include dirs, HDF5 prefix dir, "
+                "or HDF5 pkgconfig name. Received:\n"
+                f"HDF5={hdf5}\n"
+                f"HDF5_INCLUDEDIR={hdf5_includedir}\n"
+                f"HDF5_LIBDIR={hdf5_libdir}\n"
+                f"HDF5_PKGCONFIG_NAME={hdf5_pkgconfig_name}\n"
             )
 
         if hdf5_includedir or hdf5_libdir:
@@ -144,7 +149,14 @@ class BuildConfig:
         # Specified a prefix dir (e.g. '/usr/local')
         if hdf5:
             inc_dirs = [op.join(hdf5, 'include')]
-            lib_dirs = [op.join(hdf5, 'lib')]
+            for subdir in ["lib64", "lib32", "lib"]:
+                p = Path(hdf5, subdir)
+                if p.is_dir() and list(p.glob("libhdf5.*")):
+                    break
+            else:
+                raise FileNotFoundError("couldn't locate HDF5's lib directory")
+
+            lib_dirs = [str(p)]
             if sys.platform.startswith('win'):
                 lib_dirs.append(op.join(hdf5, 'bin'))
             return (inc_dirs, lib_dirs, [])

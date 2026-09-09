@@ -18,7 +18,7 @@ from .h5 import get_config
 from .h5r cimport Reference, RegionReference, hobj_ref_t, hdset_reg_ref_t
 from .h5t cimport H5PY_OBJ, typewrap, py_create, TypeID, H5PY_PYTHON_OPAQUE_TAG
 from libc.stdlib cimport realloc
-from libc.string cimport strcmp
+from libc.string cimport strcmp, memset
 from .utils cimport emalloc, efree
 from ._proxy cimport needs_bkg_buffer
 cfg = get_config()
@@ -543,8 +543,6 @@ cdef int enum_int_converter_conv(hid_t src, hid_t dst, H5T_cdata_t *cdata,
                 nalloc = info[0].dst_size*nl
 
             cbuf = <char*>emalloc(nalloc)
-            if cbuf == NULL:
-                raise MemoryError()
 
             for i in range(nl):
                 memcpy(cbuf + (i*info[0].src_size), buf + (i*buf_stride),
@@ -699,6 +697,7 @@ cdef int conv_vlen2ndarray(void* ipt,
         int flags = NPY_ARRAY_WRITEABLE | NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_OWNDATA
         npy_intp dims[1]
         void* data
+        void* new_data
         char[:] buf
         void* back_buf = NULL
         cnp.ndarray ndarray
@@ -712,10 +711,18 @@ cdef int conv_vlen2ndarray(void* ipt,
     dims[0] = size
     itemsize = H5Tget_size(outtype.id)
     if itemsize > H5Tget_size(intype.id):
-        data = realloc(data, itemsize * size)
+        new_data = realloc(data, itemsize * size)
+        if new_data == NULL:
+            efree(data)
+            raise MemoryError("Failed to reallocate vlen conversion buffer")
+        data = new_data
 
     if needs_bkg_buffer(intype.id, outtype.id):
+        # The background buffer holds the existing destination value, which a
+        # converter may release -- conv_regref2pyref decrefs it.  It has to be
+        # zeroed rather than left holding whatever was on the heap.
         back_buf = emalloc(H5Tget_size(outtype.id)*size)
+        memset(back_buf, 0, H5Tget_size(outtype.id)*size)
 
     try:
         H5Tconvert(intype.id, outtype.id, size, data, back_buf, H5P_DEFAULT)
@@ -866,7 +873,11 @@ cdef int conv_ndarray2vlen(void* ipt,
         PyBuffer_Release(&view)
 
         if needs_bkg_buffer(intype.id, outtype.id):
+            # The background buffer holds the existing destination value, which
+            # a converter may release -- conv_regref2pyref decrefs it.  It has
+            # to be zeroed rather than left holding whatever was on the heap.
             back_buf = emalloc(H5Tget_size(outtype.id)*len)
+            memset(back_buf, 0, H5Tget_size(outtype.id)*len)
 
         H5Tconvert(intype.id, outtype.id, len, data, back_buf, H5P_DEFAULT)
 
@@ -913,20 +924,33 @@ cdef herr_t uint2bitfield(hid_t src_id, hid_t dst_id, H5T_cdata_t *cdata,
 #   to preserve existing behaviour. We expect to switch this in h5py 4.0.
 
 cdef inline int check_compound_complex(hid_t tid, size_t member_size, H5T_order_t order):
+    cdef hid_t tm
     if (
             H5Tget_class(tid) == H5T_COMPOUND
-            and H5Tget_nmembers(tid) == 2
-            and H5Tget_member_class(tid, 0) == H5T_FLOAT
-            and H5Tget_member_class(tid, 1) == H5T_FLOAT
-            and H5Tget_size(H5Tget_member_type(tid, 0)) == member_size
-            and H5Tget_size(H5Tget_member_type(tid, 1)) == member_size
-            and H5Tget_member_offset(tid, 0) == 0
-            and H5Tget_member_offset(tid, 1) == <int>member_size
-            and H5Tget_order(H5Tget_member_type(tid, 0)) == order
-            and H5Tget_order(H5Tget_member_type(tid, 1)) == order
+        and H5Tget_nmembers(tid) == 2
+        and H5Tget_member_class(tid, 0) == H5T_FLOAT
+        and H5Tget_member_class(tid, 1) == H5T_FLOAT
+        and H5Tget_member_offset(tid, 0) == 0
+        and H5Tget_member_offset(tid, 1) == <int>member_size
     ):
+        # Check member type details
+        tm = H5Tget_member_type(tid, 0)
+        try:
+            if H5Tget_size(tm) != member_size or H5Tget_order(tm) != order:
+                return 0
+        finally:
+            H5Tclose(tm)
+
+        tm = H5Tget_member_type(tid, 1)
+        try:
+            if H5Tget_size(tm) != member_size or H5Tget_order(tm) != order:
+                return 0
+        finally:
+            H5Tclose(tm)
+
         return 1
-    return 0
+    else:
+        return 0
 
 ### {{if HDF5_VERSION >= (2, 0, 0)}}
 cdef herr_t complex2compound(hid_t src_id,

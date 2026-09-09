@@ -2,11 +2,11 @@
 #    uv pip compile -p 3.10 --universal --group docs -o docs/requirements-rtd.txt
 alabaster==1.0.0
     # via sphinx
-babel==2.17.0
+babel==2.18.0
     # via sphinx
-certifi==2026.1.4
+certifi==2026.6.17
     # via requests
-charset-normalizer==3.4.4
+charset-normalizer==3.4.7
     # via requests
 colorama==0.4.6 ; sys_platform == 'win32'
     # via sphinx
@@ -14,19 +14,19 @@ docutils==0.21.2
     # via
     #   sphinx
     #   sphinx-rtd-theme
-idna==3.11
+idna==3.18
     # via requests
-imagesize==1.4.1
+imagesize==2.0.0
     # via sphinx
 jinja2==3.1.6
     # via sphinx
 markupsafe==3.0.3
     # via jinja2
-packaging==26.0
+packaging==26.1
     # via sphinx
-pygments==2.19.2
+pygments==2.20.0
     # via sphinx
-requests==2.32.5
+requests==2.34.2
     # via sphinx
 roman-numerals==4.1.0 ; python_full_version >= '3.11'
     # via roman-numerals-py
@@ -62,5 +62,5 @@ sphinxcontrib-serializinghtml==2.0.0
     # via sphinx
 tomli==2.4.0 ; python_full_version < '3.11'
     # via sphinx
-urllib3==2.6.3
+urllib3==2.7.0
     # via requests

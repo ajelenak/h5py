@@ -14,6 +14,7 @@
 import inspect
 import os
 import sys
+from urllib.parse import urlsplit
 from warnings import warn
 
 from .compat import filename_decode, filename_encode
@@ -141,7 +142,7 @@ def make_fapl(
         cache_settings[3] = rdcc_w0
     plist.set_cache(*cache_settings)
 
-    if page_buf_size:
+    if page_buf_size is not None:
         plist.set_page_buffer_size(int(page_buf_size), int(min_meta_keep),
                                    int(min_raw_keep))
 
@@ -166,11 +167,25 @@ def make_fapl(
     else:
         if driver == 'ros3':
             token = kwds.pop('session_token', None)
+            block_size = kwds.pop('block_size', None)
+            block_cache_size = kwds.pop('block_cache_size', None)
+            lock_superblock = kwds.pop('lock_superblock', None)
             set_fapl(plist, **kwds)
             if token:
                 if hdf5_version < (1, 14, 2):
                     raise ValueError('HDF5 >= 1.14.2 required for AWS session token')
                 plist.set_fapl_ros3_token(token)
+            block_config = {}
+            if block_size is not None:
+                block_config['block_size'] = int(block_size)
+            if block_cache_size is not None:
+                block_config['block_cache_size'] = int(block_cache_size)
+            if lock_superblock is not None:
+                block_config['lock_superblock'] = bool(lock_superblock)
+            if block_config:
+                if hdf5_version < (2, 2, 0):
+                    raise ValueError('HDF5 >= 2.2.0 required to configure the ROS3 block cache')
+                plist.set_fapl_ros3_block_caching(**block_config)
         else:
             set_fapl(plist, **kwds)
 
@@ -391,6 +406,7 @@ class File(Group):
         driver
             Name of the driver to use.  Legal values are None (default,
             recommended), 'core', 'sec2', 'direct', 'stdio', 'mpio', 'ros3'.
+            If None, the ros3 driver is automatically selected for supported URLs.
         libver
             Library version bounds.  Supported values: 'earliest', 'v108',
             'v110', 'v112', 'v114', 'v200' and 'latest' depending on the
@@ -495,6 +511,16 @@ class File(Group):
         Additional keywords
             Passed on to the selected file driver.
         """
+        # Automatically select the ros3 driver if it's an S3 URL.
+        # As the other drivers currently do not support HTTP(S), the ros3 driver is
+        # also automatically selected for these schemes.
+        if (
+            driver is None
+            and isinstance(name, str)
+            and urlsplit(name).scheme in ("http", "https", "s3")
+        ):
+            driver = 'ros3'
+
         if driver == 'ros3':
             if not ros3:
                 raise ValueError("h5py was built without ROS3 support, can't use ros3 driver")

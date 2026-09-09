@@ -510,23 +510,26 @@ cdef class DatasetID(ObjectID):
         cdef size_t data_size
         cdef int rank
         cdef Py_buffer view
+        cdef bint view_acquired = False
 
         dset_id = self.id
         dxpl_id = pdefault(dxpl)
         space_id = H5Dget_space(self.id)
         rank = H5Sget_simple_extent_ndims(space_id)
 
-        if len(offsets) != rank:
-            raise TypeError("offset length (%d) must match dataset rank (%d)" % (len(offsets), rank))
-
         try:
+            if len(offsets) != rank:
+                raise TypeError("offset length (%d) must match dataset rank (%d)" % (len(offsets), rank))
+
             offset = <hsize_t*>emalloc(sizeof(hsize_t)*rank)
             convert_tuple(offsets, offset, rank)
             PyObject_GetBuffer(data, &view, PyBUF_ANY_CONTIGUOUS)
+            view_acquired = True
             H5Dwrite_chunk(dset_id, dxpl_id, filter_mask, offset, view.len, view.buf)
         finally:
             efree(offset)
-            PyBuffer_Release(&view)
+            if view_acquired:
+                PyBuffer_Release(&view)
             if space_id:
                 H5Sclose(space_id)
 
@@ -631,21 +634,25 @@ cdef class DatasetID(ObjectID):
         cdef unsigned filter_mask
         cdef hid_t space_id = 0
         cdef int rank
+        cdef tuple cot
 
         if space is None:
             space_id = H5Dget_space(self.id)
         else:
             space_id = space.id
 
-        rank = H5Sget_simple_extent_ndims(space_id)
-        chunk_offset = <hsize_t*>emalloc(sizeof(hsize_t) * rank)
-        H5Dget_chunk_info(self.id, space_id, index, chunk_offset,
-                          &filter_mask, &byte_offset, &size)
-        cdef tuple cot = convert_dims(chunk_offset, <hsize_t>rank)
-        efree(chunk_offset)
+        try:
+            rank = H5Sget_simple_extent_ndims(space_id)
+            chunk_offset = <hsize_t*>emalloc(sizeof(hsize_t) * rank)
 
-        if space is None:
-            H5Sclose(space_id)
+            H5Dget_chunk_info(self.id, space_id, index, chunk_offset,
+                              &filter_mask, &byte_offset, &size)
+            cot = convert_dims(chunk_offset, <hsize_t>rank)
+        finally:
+            efree(chunk_offset)
+
+            if space is None:
+                H5Sclose(space_id)
 
         return StoreInfo(cot if byte_offset != HADDR_UNDEF else None,
                          filter_mask,

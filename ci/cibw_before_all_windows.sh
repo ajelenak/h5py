@@ -10,10 +10,8 @@ PROJECT_PATH="$1"
 
 if [[ "$ARCH" == "ARM64" ]]; then
     export ZLIB_ROOT="$PROJECT_PATH/zlib-win-arm64"
-    export HDF5_VSVERSION="17-arm64"
 elif [[ "$ARCH" == "AMD64" ]]; then
     export ZLIB_ROOT="$PROJECT_PATH/zlib-win-x64"
-    export HDF5_VSVERSION="17-64"
 else
     echo "Got unexpected arch '$ARCH'"
     exit 1
@@ -29,7 +27,7 @@ export LINK="/LIBPATH:$ZLIB_ROOT/lib"
 export PATH="$PATH:$EXTRA_PATH"
 
 # HDF5
-export HDF5_VERSION="2.0.0"
+export HDF5_VERSION="2.2.0"
 export HDF5_DIR="$PROJECT_PATH/cache/hdf5/$HDF5_VERSION"
 
 pip install requests

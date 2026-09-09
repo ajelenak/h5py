@@ -10,31 +10,64 @@
 """
     Versioning module for h5py.
 """
-
-from collections import namedtuple
+from typing import Literal, NamedTuple
 from . import h5 as _h5
 import sys
 import numpy
 
 # All should be integers, except pre, as validating versions is more than is
 # needed for our use case
-_H5PY_VERSION_CLS = namedtuple("_H5PY_VERSION_CLS",
-                               "major minor bugfix pre post dev")
+class _H5PY_VERSION_CLS(NamedTuple):
+    major: int
+    minor: int
+    bugfix: int
+    pre: Literal["a", "b", "rc"] | None = None
+    post: int | None = None
+    dev: int | None = None
+
+    def __str__(self) -> str:
+        s = f"{self.major}.{self.minor}.{self.bugfix}"
+        if self.pre is not None:
+            s += self.pre
+        if self.post is not None:
+            s += f".post{self.post}"
+        if version_tuple.dev is not None:
+            s += f".dev{self.dev}"
+        return s
 
 hdf5_built_version_tuple = _h5.HDF5_VERSION_COMPILED_AGAINST
 
-version_tuple = _H5PY_VERSION_CLS(3, 16, 0, None, None, None)
-
-version = "{0.major:d}.{0.minor:d}.{0.bugfix:d}".format(version_tuple)
-if version_tuple.pre is not None:
-    version += version_tuple.pre
-if version_tuple.post is not None:
-    version += ".post{0.post:d}".format(version_tuple)
-if version_tuple.dev is not None:
-    version += ".dev{0.dev:d}".format(version_tuple)
+# keep in sync with project.version (pyproject.toml)
+version_tuple = _H5PY_VERSION_CLS(major=3, minor=17, bugfix=0, dev=0)
+version = str(version_tuple)
 
 hdf5_version_tuple = _h5.get_libversion()
 hdf5_version = "%d.%d.%d" % hdf5_version_tuple
+
+
+def _hdf5_abi_compatible(built_version, running_version):
+    """Can h5py built against ``built_version`` safely use ``running_version``?
+
+    From 2.0.0 onwards HDF5 guarantees ABI backwards compatibility within a
+    major version: an application linked against X.Y.Z runs without
+    recompilation against any later X.A.B.  See
+    https://github.com/HDFGroup/hdf5/wiki/HDF5-Version-Numbers-and-Branch-Strategy
+
+    HDF5 1.x predates that promise -- its minor number played the role the
+    major number plays now, and the ABI was known to change even between
+    maintenance releases (e.g. H5Oget_info* in 1.10.4) -- so there we only
+    accept an exact match, as h5py always has.
+    """
+    if running_version == built_version:
+        return True
+
+    if built_version[0] < 2:
+        return False
+
+    # The majors must match, and an older library of the same major version may
+    # be missing symbols and features h5py was built against, so only accept
+    # newer ones.
+    return (running_version[0] == built_version[0]) and (running_version > built_version)
 
 api_version_tuple = (1,8)
 api_version = "%d.%d" % api_version_tuple

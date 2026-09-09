@@ -249,7 +249,7 @@ hdf5:
   herr_t    H5Oget_info_by_idx(hid_t loc_id, char *group_name,  H5_index_t idx_type, H5_iter_order_t order, hsize_t n, H5O_info_t *oinfo, hid_t lapl_id)
 
   herr_t    H5Olink(hid_t obj_id, hid_t new_loc_id, char *new_name, hid_t lcpl_id, hid_t lapl_id)
-  herr_t    H5Ocopy(hid_t src_loc_id, char *src_name, hid_t dst_loc_id,  char *dst_name, hid_t ocpypl_id, hid_t lcpl_id)
+  herr_t    H5Ocopy(hid_t src_loc_id, char *src_name, hid_t dst_loc_id,  char *dst_name, hid_t ocpypl_id, hid_t lcpl_id) nogil
 
   herr_t    H5Oincr_refcount(hid_t object_id)
   herr_t    H5Odecr_refcount(hid_t object_id)
@@ -306,6 +306,8 @@ hdf5:
   ROS3 herr_t    H5Pset_fapl_ros3(hid_t fapl_id, H5FD_ros3_fapl_t *fa)
   ROS3 1.14.2 herr_t H5Pget_fapl_ros3_token(hid_t fapl_id, size_t size, char *token)
   ROS3 1.14.2 herr_t H5Pset_fapl_ros3_token(hid_t fapl_id, const char *token)
+  ROS3 2.2.0 herr_t H5Pget_fapl_ros3_block_caching(hid_t fapl_id, size_t *block_size, size_t *block_cache_size, hbool_t *lock_superblock)
+  ROS3 2.2.0 herr_t H5Pset_fapl_ros3_block_caching(hid_t fapl_id, size_t block_size, size_t block_cache_size, hbool_t lock_superblock)
   DIRECT_VFD herr_t H5Pget_fapl_direct(hid_t fapl_id, size_t *boundary, size_t *block_size, size_t *cbuf_size);
   DIRECT_VFD herr_t H5Pset_fapl_direct(hid_t fapl_id, size_t alignment, size_t block_size, size_t cbuf_size);
   herr_t    H5Pset_fapl_log(hid_t fapl_id, char *logfile, unsigned int flags, size_t buf_size)
