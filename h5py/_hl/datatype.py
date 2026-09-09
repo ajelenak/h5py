@@ -16,6 +16,7 @@ import posixpath as pp
 from ..h5t import TypeID, TypeOpaqueID
 from .base import HLObject, with_phil
 
+
 class Datatype(HLObject):
 
     """
@@ -36,7 +37,7 @@ class Datatype(HLObject):
 
     @property
     @with_phil
-    def opaque_tag(self):
+    def opaque_tag(self) -> bytes | None:
         """HDF5 opaque tag as ``bytes``, or ``None``.
 
         Returns the tag stored on the underlying HDF5 opaque datatype, or

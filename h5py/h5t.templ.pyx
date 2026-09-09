@@ -1933,7 +1933,7 @@ def enum_dtype(values_dict, basetype=np.uint8):
     return np.dtype(dt, metadata={'enum': values_dict})
 
 
-def opaque_dtype(np_dtype, *, tag=None):
+def opaque_dtype(np_dtype, *, tag: str | bytes | bytearray | None = None) -> np.dtype:
     """Return an equivalent dtype tagged to be stored in an HDF5 opaque type.
 
     This makes it easy to store numpy data like datetimes for which there is
@@ -2131,7 +2131,7 @@ def check_opaque_dtype(dt):
         return False
 
 
-def get_opaque_tag(dt):
+def get_opaque_tag(dt: np.dtype) -> bytes | None:
     """Return the custom HDF5 opaque tag for ``dt``, or ``None``.
 
     If ``dt`` was produced by :func:`opaque_dtype` with a ``tag=`` argument,
