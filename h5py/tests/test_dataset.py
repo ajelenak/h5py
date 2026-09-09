@@ -866,7 +866,7 @@ def _unwrap_reference(value):
 
 
 @pytest.mark.parametrize('ref_kind', ['object', 'region'])
-@pytest.mark.parametrize('container,make_dtype,make_fill', REFERENCE_CONTAINERS)
+@pytest.mark.parametrize('make_dtype,make_fill', REFERENCE_CONTAINERS)
 def test_reference_fillvalue(make_dtype, make_fill, ref_kind, tmp_path):
     """ Fill values carrying references round-trip and still dereference
 
